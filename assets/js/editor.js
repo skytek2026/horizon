@@ -2040,7 +2040,14 @@
     if (autosaveTimer) clearInterval(autosaveTimer);
     if (settings.autosave) autosaveTimer = setInterval(function () { if (S.dirty) save(true); }, (settings.autosaveInterval || 30) * 1000);
   }
-  window.addEventListener("beforeunload", function (e) { if (S.dirty) { save(true); } });
+  // Persist layers reliably when leaving. A background write dies with the
+  // page, so use a keepalive beacon. Also save when the tab is hidden
+  // (covers mobile/app-switch, where beforeunload may not fire).
+  function persistOnLeave() {
+    if (S.dirty && image) { Store.saveImageObjectsBeacon(projectId, imageId, S.objects); S.dirty = false; }
+  }
+  window.addEventListener("beforeunload", persistOnLeave);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") persistOnLeave(); });
 
   /* ============================================================
      EXPORT (render to canvas)

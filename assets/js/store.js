@@ -73,8 +73,27 @@
     });
   }
   function flush(cb) { if (_pending <= 0) { if (cb) cb(); return; } if (cb) _flushCbs.push(cb); }
+  function hasPending() { return _pending > 0; }
   // Surface a query error into track()'s catch handler.
   function chk(res) { if (res && res.error) throw res.error; return res; }
+
+  // Persist an image's layers on page-unload. A normal Supabase write is
+  // async and gets killed when the tab closes; a fetch with keepalive:true
+  // is allowed to outlive the page, so the layer edits actually land. Also
+  // updates the in-memory cache so a same-session reload is correct.
+  function saveImageObjectsBeacon(projectId, imageId, objects) {
+    var p = findCache(projectId);
+    if (p) { var i = imgIndex(p, imageId); if (i >= 0) { p.images[i].objects = objects; p.images[i].updatedAt = Date.now(); p.updatedAt = Date.now(); } }
+    if (!CFG.url || !CFG.key) return;
+    try {
+      fetch(CFG.url + "/rest/v1/images?id=eq." + encodeURIComponent(imageId), {
+        method: "PATCH",
+        headers: { apikey: CFG.key, Authorization: "Bearer " + CFG.key, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({ objects: objects, updated_at: new Date().toISOString() }),
+        keepalive: true
+      });
+    } catch (e) { /* best-effort */ }
+  }
 
   /* ---- binary helpers ---- */
   function extFromDataUrl(d) {
@@ -565,7 +584,8 @@
   }
 
   window.Store = {
-    KEYS: KEYS, uid: uid, ready: ready, flush: flush, clearAll: clearAll,
+    KEYS: KEYS, uid: uid, ready: ready, flush: flush, hasPending: hasPending, clearAll: clearAll,
+    saveImageObjectsBeacon: saveImageObjectsBeacon,
     getSession: getSession, setSession: setSession, clearSession: clearSession, isAuthed: isAuthed,
     getSettings: getSettings, setSettings: setSettings,
     getProjects: getProjects, getProject: getProject, createProject: createProject,
