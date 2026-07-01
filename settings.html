@@ -44,7 +44,7 @@
               <div class="setting-control"><div class="switch" data-toggle="autosave"></div></div>
             </div>
             <div class="setting-row">
-              <div class="setting-info"><div class="st">Autosave interval</div><div class="sd">How often changes are written to local storage.</div></div>
+              <div class="setting-info"><div class="st">Autosave interval</div><div class="sd">How often changes are saved.</div></div>
               <div class="setting-control">
                 <select class="select" data-set="autosaveInterval">
                   <option value="10">Every 10s</option><option value="30">Every 30s</option><option value="60">Every 60s</option>
@@ -104,7 +104,7 @@
           <h3>Storage</h3>
           <div class="card">
             <div class="setting-row">
-              <div class="setting-info"><div class="st">Local storage used</div><div class="sd" id="storageDetail">Projects and images are saved in this browser.</div></div>
+              <div class="setting-info"><div class="st">Image cache</div><div class="sd" id="storageDetail">Projects and images are stored in your shared Supabase database.</div></div>
               <div class="setting-control"><span class="badge badge--accent" id="storageBadge">0 KB</span></div>
             </div>
             <div class="setting-row danger-zone">
@@ -179,7 +179,7 @@
     document.getElementById("storageDetail").textContent =
       Store.getProjects().length + " project(s), " + Store.totalImages() + " image(s) stored in this browser.";
   }
-  Store.ready(refreshStorage);
+  Store.ready(function () { refreshStorage(); UI.updateSidebarCounts(); });
 
   document.getElementById("clearData").addEventListener("click", function () {
     UI.confirm({

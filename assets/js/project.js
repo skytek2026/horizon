@@ -8,15 +8,7 @@
 
   var params = new URLSearchParams(location.search);
   var projectId = params.get("id");
-  var project = Store.getProject(projectId);
-
-  if (!project) {
-    document.body.innerHTML = '<div class="empty" style="min-height:100vh;display:grid;place-items:center"><div><div class="empty-icon">' +
-      Icons.svg("folder", { size: 30 }) + '</div><h3>Project not found</h3><p>It may have been deleted.</p>' +
-      '<a class="btn btn--primary" href="dashboard.html">Back to dashboard</a></div></div>';
-    UI.hydrateIcons();
-    return;
-  }
+  var project = null;
   Store.setLastProject(projectId);
 
   /* ---- shell ---- */
@@ -154,5 +146,15 @@
     document.addEventListener(ev, function (e) { if (e.target.closest && e.target.closest(".content")) e.preventDefault(); });
   });
 
-  Store.ready(function () { refresh(); renderHero(); renderGallery(); UI.hydrateIcons(); });
+  Store.ready(function () {
+    refresh();
+    if (!project) {
+      document.body.innerHTML = '<div class="empty" style="min-height:100vh;display:grid;place-items:center"><div><div class="empty-icon">' +
+        Icons.svg("folder", { size: 30 }) + '</div><h3>Project not found</h3><p>It may have been deleted.</p>' +
+        '<a class="btn btn--primary" href="dashboard.html">Back to dashboard</a></div></div>';
+      UI.hydrateIcons();
+      return;
+    }
+    renderHero(); renderGallery(); UI.updateSidebarCounts(); UI.hydrateIcons();
+  });
 })();

@@ -22,11 +22,9 @@
   var params = new URLSearchParams(location.search);
   var projectId = params.get("project");
   var imageId = params.get("image");
-  var project = Store.getProject(projectId);
-  if (!project) { location.href = "dashboard.html"; return; }
+  var project = null;
+  var image = null;
   Store.setLastProject(projectId);
-  if (!imageId && project.images.length) imageId = project.images[0].id;
-  var image = imageId ? Store.getImage(projectId, imageId) : null;
 
   /* ------------------------------------------------------------
      State
@@ -2491,7 +2489,10 @@
   }
   Store.ready(function () {
     project = Store.getProject(projectId);
+    if (!project) { location.href = "dashboard.html"; return; }
+    if (!imageId && project.images.length) imageId = project.images[0].id;
     image = imageId ? Store.getImage(projectId, imageId) : null;
+    S.objects = image ? JSON.parse(JSON.stringify(image.objects || [])) : [];
     boot();
   });
 })();

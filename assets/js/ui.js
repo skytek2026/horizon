@@ -212,11 +212,18 @@
     reader.readAsDataURL(file);
   }
 
+  // Refresh the sidebar's Projects count (data loads async now, after the
+  // shell is built).
+  function updateSidebarCounts() {
+    var el = document.querySelector(".nav-count");
+    if (el && window.Store) el.textContent = window.Store.getProjects().length;
+  }
+
   window.UI = {
     hydrateIcons: hydrateIcons, fmtDate: fmtDate, fmtRelative: fmtRelative, escapeHtml: escapeHtml,
     toast: toast, modal: modal, confirm: confirm,
     applyTheme: applyTheme, initTheme: initTheme, toggleTheme: toggleTheme,
     requireAuth: requireAuth, logout: logout,
-    buildSidebar: buildSidebar, wireSidebar: wireSidebar, fileToImage: fileToImage
+    buildSidebar: buildSidebar, wireSidebar: wireSidebar, updateSidebarCounts: updateSidebarCounts, fileToImage: fileToImage
   };
 })();

@@ -33,7 +33,7 @@
       { v: projects.length, l: "Projects", accent: true },
       { v: Store.totalImages(), l: "Images", accent: false },
       { v: Store.getRecent().length, l: "Recently edited", accent: false },
-      { v: Store.storageUsedKB() + " KB", l: "Local storage", accent: false }
+      { v: Store.storageUsedKB() + " KB", l: "Cached", accent: false }
     ];
     document.getElementById("statRow").innerHTML = stats.map(function (s) {
       return '<div class="stat"><div class="v ' + (s.accent ? "" : "neutral") + '">' + s.v + '</div><div class="l">' + s.l + "</div></div>";
@@ -177,7 +177,7 @@
   document.getElementById("welcomeTitle").textContent =
     "Welcome back, " + (Store.getSettings().fullName || "Operator").split(" ")[0];
 
-  function renderAll() { renderStats(); renderProjects(); UI.hydrateIcons(); }
+  function renderAll() { renderStats(); renderProjects(); UI.updateSidebarCounts(); UI.hydrateIcons(); }
   Store.ready(function () { renderAll(); renderTemplates(); UI.hydrateIcons(); });
 
   // honor #anchor on load
