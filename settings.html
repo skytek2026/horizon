@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings · Horizon Caption Studio</title>
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="assets/css/pages.css">
+</head>
+<body>
+<div class="app">
+  <div id="sidebarMount"></div>
+  <main class="main">
+    <header class="topbar">
+      <button class="btn btn--icon btn--ghost menu-toggle" id="menuToggle" aria-label="Menu"><span data-icon="menu"></span></button>
+      <h1>Settings</h1>
+      <div class="spacer"></div>
+      <button class="btn btn--ghost" id="logoutBtn"><span data-icon="logout"></span>Logout</button>
+    </header>
+
+    <div class="content">
+      <div class="settings-wrap">
+
+        <div class="settings-group">
+          <h3>Appearance</h3>
+          <div class="card">
+            <div class="setting-row">
+              <div class="setting-info"><div class="st">Theme</div><div class="sd">Switch between dark and light interface.</div></div>
+              <div class="setting-control">
+                <div class="segmented" id="themeSeg">
+                  <button data-theme="dark"><span data-icon="moon" data-size="15"></span>Dark</button>
+                  <button data-theme="light"><span data-icon="sun" data-size="15"></span>Light</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h3>Editor</h3>
+          <div class="card">
+            <div class="setting-row">
+              <div class="setting-info"><div class="st">Autosave</div><div class="sd">Automatically save annotations while you work.</div></div>
+              <div class="setting-control"><div class="switch" data-toggle="autosave"></div></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><div class="st">Autosave interval</div><div class="sd">How often changes are written to local storage.</div></div>
+              <div class="setting-control">
+                <select class="select" data-set="autosaveInterval">
+                  <option value="10">Every 10s</option><option value="30">Every 30s</option><option value="60">Every 60s</option>
+                </select>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><div class="st">Snap to grid</div><div class="sd">Align objects to the grid while dragging.</div></div>
+              <div class="setting-control"><div class="switch" data-toggle="snapToGrid"></div></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><div class="st">Grid size</div><div class="sd">Spacing of the grid in pixels.</div></div>
+              <div class="setting-control">
+                <select class="select" data-set="gridSize">
+                  <option value="10">10 px</option><option value="20">20 px</option><option value="40">40 px</option><option value="50">50 px</option>
+                </select>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><div class="st">Show grid overlay</div><div class="sd">Display the grid on the canvas by default.</div></div>
+              <div class="setting-control"><div class="switch" data-toggle="showGrid"></div></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><div class="st">Alignment guides</div><div class="sd">Show smart guides when objects line up.</div></div>
+              <div class="setting-control"><div class="switch" data-toggle="alignmentGuides"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h3>Export</h3>
+          <div class="card">
+            <div class="setting-row">
+              <div class="setting-info"><div class="st">Default format</div><div class="sd">Preferred format for exported images.</div></div>
+              <div class="setting-control">
+                <select class="select" data-set="defaultExport"><option value="png">PNG</option><option value="jpeg">JPEG</option></select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h3>Profile</h3>
+          <div class="card">
+            <div class="setting-row">
+              <div class="setting-info"><div class="st">Display name</div><div class="sd">Shown across the workspace.</div></div>
+              <div class="setting-control"><input class="input" data-set="fullName"></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><div class="st">Email</div><div class="sd">For your records only — stored locally.</div></div>
+              <div class="setting-control"><input class="input" data-set="email"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h3>Storage</h3>
+          <div class="card">
+            <div class="setting-row">
+              <div class="setting-info"><div class="st">Local storage used</div><div class="sd" id="storageDetail">Projects and images are saved in this browser.</div></div>
+              <div class="setting-control"><span class="badge badge--accent" id="storageBadge">0 KB</span></div>
+            </div>
+            <div class="setting-row danger-zone">
+              <div class="setting-info"><div class="st">Clear all data</div><div class="sd">Permanently delete every project, image and setting.</div></div>
+              <div class="setting-control"><button class="btn btn--danger" id="clearData"><span data-icon="trash"></span>Clear all data</button></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="assets/js/store.js"></script>
+<script src="assets/js/library.js"></script>
+<script src="assets/js/ui.js"></script>
+<script>
+(function () {
+  "use strict";
+  if (!UI.requireAuth()) return;
+  UI.initTheme();
+  document.getElementById("sidebarMount").outerHTML = UI.buildSidebar("settings");
+  UI.wireSidebar();
+  UI.hydrateIcons();
+
+  var s = Store.getSettings();
+
+  // theme segmented
+  function syncTheme() {
+    document.querySelectorAll("#themeSeg button").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-theme") === Store.getSettings().theme);
+    });
+  }
+  document.querySelectorAll("#themeSeg button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var t = b.getAttribute("data-theme");
+      Store.setSettings({ theme: t }); UI.applyTheme(t); syncTheme();
+      UI.toast({ type: "success", title: t === "dark" ? "Dark theme" : "Light theme", duration: 1200 });
+    });
+  });
+  syncTheme();
+
+  // toggles
+  document.querySelectorAll("[data-toggle]").forEach(function (sw) {
+    var key = sw.getAttribute("data-toggle");
+    sw.classList.toggle("on", !!s[key]);
+    sw.addEventListener("click", function () {
+      var v = !sw.classList.contains("on");
+      sw.classList.toggle("on", v);
+      Store.setSettings(JSON.parse('{"' + key + '":' + v + '}'));
+    });
+  });
+
+  // selects + inputs
+  document.querySelectorAll("[data-set]").forEach(function (el) {
+    var key = el.getAttribute("data-set");
+    el.value = s[key];
+    el.addEventListener("change", function () {
+      var v = el.value;
+      if (el.tagName === "SELECT" && /^\d+$/.test(v)) v = +v;
+      var patch = {}; patch[key] = v; Store.setSettings(patch);
+      UI.toast({ type: "success", title: "Saved", duration: 1000 });
+    });
+  });
+
+  // storage
+  function refreshStorage() {
+    document.getElementById("storageBadge").textContent = Store.storageUsedKB() + " KB";
+    document.getElementById("storageDetail").textContent =
+      Store.getProjects().length + " project(s), " + Store.totalImages() + " image(s) stored in this browser.";
+  }
+  Store.ready(refreshStorage);
+
+  document.getElementById("clearData").addEventListener("click", function () {
+    UI.confirm({
+      title: "Clear all data?", danger: true,
+      message: "Every project, image and setting will be permanently deleted from this browser. This cannot be undone.",
+      confirmText: "Delete everything",
+      onConfirm: function () {
+        Store.clearAll();
+        UI.toast({ type: "success", title: "All data cleared" });
+        setTimeout(function () { location.href = "index.html"; }, 700);
+      }
+    });
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", function () {
+    UI.confirm({ title: "Log out?", confirmText: "Log out", onConfirm: UI.logout });
+  });
+})();
+</script>
+</body>
+</html>

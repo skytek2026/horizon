@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="ext-resource-dependency" content="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js">
+<title>Editor · Horizon Caption Studio</title>
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="assets/css/editor.css">
+</head>
+<body class="editor-body">
+<div class="editor">
+  <!-- TOP TOOLBAR -->
+  <header class="etop">
+    <div class="group">
+      <a class="tbtn" id="btnBack" title="Back to project"><span data-icon="chevL"></span></a>
+      <div class="brand-mark" style="width:30px;height:30px;border-radius:8px"><span id="topLogo"></span></div>
+      <div class="file-name"><span class="fn" id="fileName">image.png</span><span class="fp" id="filePath">Project</span></div>
+    </div>
+    <div class="sep"></div>
+    <div class="group">
+      <button class="tbtn" id="btnUndo" title="Undo (Ctrl+Z)"><span data-icon="Undo2"></span></button>
+      <button class="tbtn" id="btnRedo" title="Redo (Ctrl+Shift+Z)"><span data-icon="Redo2"></span></button>
+      <button class="tbtn danger" id="btnResetCanvas" title="Reset — remove all annotations"><span data-icon="reset"></span></button>
+    </div>
+    <div class="sep"></div>
+    <div class="group">
+      <button class="tbtn" id="btnZoomOut" title="Zoom out"><span data-icon="zoomOut"></span></button>
+      <span class="zoom-label" id="zoomLabel" title="Reset zoom to 100%">100%</span>
+      <button class="tbtn" id="btnZoomIn" title="Zoom in"><span data-icon="zoomIn"></span></button>
+      <button class="tbtn" id="btnFit" title="Fit to screen"><span data-icon="fit"></span></button>
+      <button class="tbtn" id="btnCenter" title="Center image"><span data-icon="target"></span></button>
+    </div>
+    <div class="sep"></div>
+    <div class="group">
+      <button class="tbtn" id="btnGrid" title="Toggle grid overlay"><span data-icon="gridDots"></span></button>
+      <button class="tbtn" id="btnSnap" title="Snap to grid"><span data-icon="layout"></span></button>
+      <button class="tbtn" id="btnDraw" title="Draw freehand region (P)"><span data-icon="edit"></span></button>
+      <button class="tbtn" id="btnFullscreen" title="Fullscreen (F)"><span data-icon="fullscreen"></span></button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="autosave-ind" id="autosaveInd"><span class="dot"></span><span id="autosaveText">Saved</span></div>
+    <div class="sep"></div>
+    <button class="btn btn--ghost btn--sm" id="btnSave"><span data-icon="save"></span>Save</button>
+    <div class="menu-pop">
+      <button class="btn btn--primary btn--sm" id="btnExport"><span data-icon="download"></span>Export</button>
+      <div class="menu-list" id="exportMenu">
+        <div class="menu-item" data-export="png"><span data-icon="image"></span>Download PNG</div>
+        <div class="menu-item" data-export="jpeg"><span data-icon="image"></span>Download JPEG</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <div class="emain">
+    <!-- LEFT RAIL -->
+    <aside class="erail erail--left" id="leftRail">
+      <div class="erail-head" style="display:flex;align-items:center;gap:8px">Layers<span class="muted" id="libCount" style="display:none"></span><span style="flex:1"></span><button class="rail-toggle" id="toggleLayers" title="Hide layers panel"><span data-icon="x" data-size="15"></span></button></div>
+      <div class="erail-scroll">
+        <div class="erail-block">
+          <div class="layer-list" id="layerList"></div>
+        </div>
+      </div>
+    </aside>
+    <button class="rail-reopen" id="showLayers" title="Show layers panel" style="display:none"><span data-icon="layers" data-size="16"></span></button>
+
+    <!-- CANVAS + RIBBON -->
+    <div class="ecanvas-col">
+      <div class="ecanvas-wrap" id="canvasWrap">
+        <div class="ecanvas-bg"></div>
+        <div class="ecanvas-viewport" id="viewport">
+          <div class="stage" id="stage">
+            <img class="stage-img" id="stageImg" alt="" draggable="false">
+            <canvas class="stage-grid" id="stageGrid"></canvas>
+            <div id="objLayer"></div>
+          </div>
+        </div>
+        <div class="editor-empty hidden" id="editorEmpty">
+          <div class="empty">
+            <div class="empty-icon"><span data-icon="image" data-size="30"></span></div>
+            <h3>No image loaded</h3><p>Upload an image to start annotating.</p>
+            <button class="btn btn--primary" id="btnUploadEmpty"><span data-icon="upload"></span>Upload image</button>
+          </div>
+        </div>
+      </div>
+      <!-- IMAGE RIBBON -->
+      <div class="img-ribbon" id="imgRibbon">
+        <div class="ribbon-strip" id="ribbonStrip"></div>
+        <button class="ribbon-add" id="btnRibbonAdd" title="Add images to this project"><span data-icon="plus"></span>Add</button>
+      </div>
+    </div>
+
+    <!-- RIGHT RAIL -->
+    <aside class="erail erail--right" id="rightRail">
+      <div class="rail-resizer" id="leftResizer" title="Drag to resize"></div>
+      <div class="erail-head">Library</div>
+      <div class="lib-body">
+        <div class="lib-tabs" id="libTabs">
+          <button class="lib-tab on" data-tab="labels"><span data-icon="tag" data-size="17"></span>Labels</button>
+          <button class="lib-tab" data-tab="components"><span data-icon="layout" data-size="16"></span>Parts</button>          <button class="lib-tab" data-tab="icons"><span data-icon="grid" data-size="17"></span>Icons</button>
+          <button class="lib-tab" data-tab="arrows"><span data-icon="arrowRt" data-size="17"></span>Arrows</button>
+          <button class="lib-tab" data-tab="shapes"><span data-icon="shapes" data-size="17"></span>Shapes</button>
+          <button class="lib-tab" data-tab="brand"><span data-icon="image" data-size="17"></span>Brand</button>
+        </div>
+        <div id="libPanel"></div>
+      </div>
+
+      <div class="erail-head" style="border-top:0">Properties</div>
+      <div class="erail-scroll"><div class="props" id="propsPanel"></div></div>
+    </aside>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept="image/jpeg,image/jpg,image/png,image/webp" multiple class="hidden">
+<input type="file" id="replaceInput" accept="image/jpeg,image/jpg,image/png,image/webp" class="hidden">
+<input type="color" id="hiddenColor" class="hidden">
+
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<script src="assets/js/store.js"></script>
+<script src="assets/js/library.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/editor.js"></script>
+</body>
+</html>

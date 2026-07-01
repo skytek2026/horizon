@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project · Horizon Caption Studio</title>
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="assets/css/pages.css">
+</head>
+<body>
+<div class="app">
+  <div id="sidebarMount"></div>
+  <main class="main">
+    <header class="topbar">
+      <button class="btn btn--icon btn--ghost menu-toggle" id="menuToggle" aria-label="Menu"><span data-icon="menu"></span></button>
+      <nav class="crumbs">
+        <a href="dashboard.html">Projects</a><span data-icon="chevR" data-size="14"></span>
+        <span id="crumbName" style="color:var(--text)">Project</span>
+      </nav>
+      <div class="spacer"></div>
+      <div class="search-wrap" style="width:240px;max-width:34vw">
+        <span data-icon="search"></span>
+        <input class="input input--search" id="gallerySearch" placeholder="Search images…">
+      </div>
+      <button class="btn btn--secondary" id="btnEditMeta"><span data-icon="edit"></span>Edit details</button>
+      <button class="btn btn--primary" id="btnUpload"><span data-icon="upload"></span>Upload Images</button>
+    </header>
+
+    <div class="content">
+      <section class="proj-hero glass" style="padding:24px 28px">
+        <div class="ph-text">
+          <h2 id="projName">Project</h2>
+          <p class="ph-desc" id="projDesc"></p>
+          <div class="ph-meta">
+            <span id="metaImages"></span>
+            <span id="metaCreated"></span>
+            <span id="metaUpdated"></span>
+          </div>
+        </div>
+      </section>
+
+      <div class="sec-head" style="margin-top:30px"><h3>Images</h3><span class="muted" id="imgCount"></span></div>
+      <div class="gallery-grid" id="galleryGrid"></div>
+    </div>
+  </main>
+</div>
+
+<input type="file" id="uploadInput" accept="image/jpeg,image/jpg,image/png,image/webp" multiple class="hidden">
+
+<script src="assets/js/store.js"></script>
+<script src="assets/js/library.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/project.js"></script>
+</body>
+</html>

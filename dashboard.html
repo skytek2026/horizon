@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard · Horizon Caption Studio</title>
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="assets/css/pages.css">
+</head>
+<body>
+<div class="app">
+  <div id="sidebarMount"></div>
+  <main class="main">
+    <header class="topbar">
+      <button class="btn btn--icon btn--ghost menu-toggle" id="menuToggle" aria-label="Menu"><span data-icon="menu"></span></button>
+      <h1>Dashboard</h1>
+      <div class="spacer"></div>
+      <button class="btn btn--primary" id="btnNew"><span data-icon="plus"></span>New Project</button>
+      <button class="btn btn--icon btn--ghost" id="themeToggle" aria-label="Toggle theme"><span data-icon="moon"></span></button>
+    </header>
+
+    <div class="content">
+      <!-- Welcome -->
+      <section class="welcome glass fade-in">
+        <div class="welcome-text">
+          <span class="badge badge--accent" style="margin-bottom:12px"><span data-icon="info" data-size="12"></span>Local workspace</span>
+          <h2 id="welcomeTitle">Welcome back</h2>
+          <p>Pick up where you left off, or start a new annotation project. Everything is saved locally in your browser.</p>
+          <div class="row" style="margin-top:18px">
+            <button class="btn btn--primary" id="btnNew2"><span data-icon="plus"></span>New Project</button>
+            <button class="btn btn--ghost" id="btnResume" style="display:none"><span data-icon="open"></span>Resume last project</button>
+          </div>
+        </div>
+        <div class="welcome-stats" id="statRow"></div>
+      </section>
+
+      <!-- Projects -->
+      <section id="projects" class="sec">
+        <div class="sec-head" style="align-items:center">
+          <h3>Projects</h3>
+          <span class="muted" id="projCount"></span>
+          <div class="spacer" style="flex:1"></div>
+          <div class="search-wrap" style="display:flex;align-items:center;width:280px;max-width:42vw">
+            <span data-icon="search"></span>
+            <input class="input input--search" id="globalSearch" placeholder="Search projects…" style="width:100%">
+          </div>
+        </div>
+        <div class="project-grid" id="projectGrid"></div>
+      </section>
+
+      <!-- Templates -->
+      <section id="templates" class="sec">
+        <div class="sec-head"><h3>Templates</h3><span class="muted">Preconfigured projects to start faster</span></div>
+        <div class="template-grid" id="templateGrid"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script src="assets/js/store.js"></script>
+<script src="assets/js/library.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/dashboard.js"></script>
+</body>
+</html>
