@@ -23,6 +23,7 @@
         <input class="input input--search" id="gallerySearch" placeholder="Search images…">
       </div>
       <button class="btn btn--secondary" id="btnEditMeta"><span data-icon="edit"></span>Edit details</button>
+      <button class="btn btn--secondary" id="btnExport"><span data-icon="download"></span>Export</button>
       <button class="btn btn--primary" id="btnUpload"><span data-icon="upload"></span>Upload Images</button>
     </header>
 
@@ -48,6 +49,7 @@
 <input type="file" id="uploadInput" accept="image/jpeg,image/jpg,image/png,image/webp" multiple class="hidden">
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="assets/js/supabase-config.js"></script>
 <script src="assets/js/store.js"></script>
 <script src="assets/js/library.js"></script>

@@ -461,6 +461,89 @@
     return Math.round(bytes / 1024);
   }
 
+  /* ============================================================
+     EXPORT / IMPORT  (.skproj = a ZIP archive)
+     Layout inside the archive:
+        project.json            manifest: name, description, and every
+                                image's layer/object data + metadata
+        images/0001-name.png    original image bytes, one file per image
+     ============================================================ */
+  function safeName(s) { return String(s || "image").replace(/[^\w.\-]+/g, "_").slice(0, 60); }
+  function pad4(n) { n = String(n); while (n.length < 4) n = "0" + n; return n; }
+
+  // Returns a Promise<{ blob, filename }>. The caller triggers the download.
+  function exportProject(id) {
+    if (!window.JSZip) return Promise.reject(new Error("Zip library not loaded."));
+    var p = findCache(id);
+    if (!p) return Promise.reject(new Error("Project not found."));
+    var zip = new JSZip();
+    var imagesDir = zip.folder("images");
+    var manifest = {
+      format: "skytek-caption-project",
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      project: { name: p.name, description: p.description || "" },
+      images: []
+    };
+    p.images.forEach(function (im, i) {
+      var entry = { filename: im.filename || "image", w: im.w || 0, h: im.h || 0, objects: im.objects || [], type: null, file: null };
+      var data = IMG[im.id];
+      if (data && data.indexOf(",") > -1) {
+        var mime = (/data:([^;]+)/.exec(data) || [])[1] || "image/png";
+        var b64 = data.split(",")[1];
+        var fname = pad4(i + 1) + "-" + safeName(im.filename || ("image" + extFromDataUrl(data)));
+        if (!/\.[a-z0-9]+$/i.test(fname)) fname += extFromDataUrl(data);
+        imagesDir.file(fname, b64, { base64: true });
+        entry.type = mime; entry.file = "images/" + fname;
+      }
+      manifest.images.push(entry);
+    });
+    zip.file("project.json", JSON.stringify(manifest, null, 2));
+    return zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } })
+      .then(function (blob) { return { blob: blob, filename: safeName(p.name) + ".skproj" }; });
+  }
+
+  // Reads a .skproj Blob/File and recreates it as a NEW project in Supabase.
+  // Returns a Promise<project>. Image byte uploads are queued via track(),
+  // so callers should Store.flush(cb) before navigating to the new project.
+  function importProject(blob) {
+    if (!window.JSZip) return Promise.reject(new Error("Zip library not loaded."));
+    return JSZip.loadAsync(blob).then(function (zip) {
+      var mf = zip.file("project.json");
+      if (!mf) throw new Error("Not a valid .skproj file (missing project.json).");
+      return mf.async("string").then(function (txt) {
+        var manifest;
+        try { manifest = JSON.parse(txt); } catch (e) { throw new Error("The project file is corrupt."); }
+        if (!manifest || manifest.format !== "skytek-caption-project")
+          throw new Error("This doesn’t look like a Skytek project file.");
+        var proj = createProject({ name: (manifest.project && manifest.project.name) || "Imported project", description: (manifest.project && manifest.project.description) || "" });
+        var imgs = manifest.images || [];
+        var newIds = [];
+        // Load each image's bytes (in manifest order), then add sequentially so
+        // the recreated project keeps the original image order.
+        return imgs.reduce(function (chain, entry) {
+          return chain.then(function () {
+            var filePath = entry.file;
+            var byteP = (filePath && zip.file(filePath))
+              ? zip.file(filePath).async("base64").then(function (b64) { return "data:" + (entry.type || "image/png") + ";base64," + b64; })
+              : Promise.resolve(null);
+            return byteP.then(function (dataUrl) {
+              if (!dataUrl) return;
+              var rec = addImage(proj.id, { src: dataUrl, w: entry.w, h: entry.h, filename: entry.filename || "image" });
+              if (rec) {
+                newIds.push(rec.id);
+                if (entry.objects && entry.objects.length) saveImageObjects(proj.id, rec.id, entry.objects);
+              }
+            });
+          });
+        }, Promise.resolve()).then(function () {
+          if (newIds.length) reorderImages(proj.id, newIds);
+          return getProject(proj.id);
+        });
+      });
+    });
+  }
+
   // seedIfEmpty is now handled during ready(); kept as a no-op for callers.
   function seedIfEmpty() {}
 
@@ -487,6 +570,7 @@
     getSettings: getSettings, setSettings: setSettings,
     getProjects: getProjects, getProject: getProject, createProject: createProject,
     updateProject: updateProject, deleteProject: deleteProject, duplicateProject: duplicateProject,
+    exportProject: exportProject, importProject: importProject,
     addImage: addImage, getImage: getImage, updateImage: updateImage, deleteImage: deleteImage,
     duplicateImage: duplicateImage, saveImageObjects: saveImageObjects, reorderImages: reorderImages,
     pushRecent: pushRecent, getRecent: getRecent,

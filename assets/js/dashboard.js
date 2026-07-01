@@ -84,6 +84,7 @@
         '<div class="pc-foot">' +
           '<button class="btn btn--secondary btn--sm" data-act="open">' + Icons.svg("open", { size: 14 }) + "Open</button>" +
           '<button class="btn btn--ghost btn--sm btn--icon" data-act="dup" title="Duplicate project">' + Icons.svg("copy", { size: 14 }) + "</button>" +
+          '<button class="btn btn--ghost btn--sm btn--icon" data-act="export" title="Export project (.skproj)">' + Icons.svg("download", { size: 14 }) + "</button>" +
           '<button class="btn btn--danger btn--sm btn--icon" data-act="del" title="Delete project">' + Icons.svg("trash", { size: 14 }) + "</button>" +
         "</div></div>";
     }).join("");
@@ -98,6 +99,9 @@
         var copy = Store.duplicateProject(id);
         if (copy) { UI.toast({ type: "success", title: "Project duplicated", desc: "“" + copy.name + "” created." }); renderAll(); }
         else UI.toast({ type: "danger", title: "Couldn't duplicate", desc: "Storage may be full. Clear some data in Settings." });
+      });
+      card.querySelector('[data-act="export"]').addEventListener("click", function (e) {
+        e.stopPropagation(); exportProject(id);
       });
       card.querySelector('[data-act="del"]').addEventListener("click", function (e) {
         e.stopPropagation();
@@ -168,6 +172,40 @@
       }
     });
   }
+
+  /* ---- export / import (.skproj) ---- */
+  function downloadBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+  function exportProject(id) {
+    var p = Store.getProject(id);
+    UI.toast({ type: "info", title: "Preparing export…", desc: "Bundling “" + (p ? p.name : "project") + "”." });
+    Store.exportProject(id).then(function (res) {
+      downloadBlob(res.blob, res.filename);
+      UI.toast({ type: "success", title: "Project exported", desc: res.filename });
+    }).catch(function (err) {
+      UI.toast({ type: "danger", title: "Export failed", desc: err.message || String(err) });
+    });
+  }
+
+  var importInput = document.getElementById("importInput");
+  document.getElementById("btnImport").addEventListener("click", function () { importInput.value = ""; importInput.click(); });
+  importInput.addEventListener("change", function () {
+    var file = importInput.files && importInput.files[0];
+    if (!file) return;
+    if (!/\.skproj$|\.zip$/i.test(file.name)) { UI.toast({ type: "warning", title: "Choose a .skproj file" }); return; }
+    UI.toast({ type: "info", title: "Importing…", desc: file.name });
+    Store.importProject(file).then(function (proj) {
+      UI.toast({ type: "success", title: "Project imported", desc: "“" + proj.name + "” added." });
+      Store.flush(function () { location.href = "project.html?id=" + proj.id; });
+    }).catch(function (err) {
+      UI.toast({ type: "danger", title: "Import failed", desc: err.message || String(err) });
+    });
+  });
 
   document.getElementById("btnNew").addEventListener("click", newProject);
   document.getElementById("btnNew2").addEventListener("click", newProject);

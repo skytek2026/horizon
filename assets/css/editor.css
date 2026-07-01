@@ -219,6 +219,17 @@
 .seg2 button { flex: 1; height: 32px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-2); border-radius: var(--r-sm); cursor: pointer; display: grid; place-items: center; transition: background var(--m-fast), color var(--m-fast); }
 .seg2 button svg { width: 15px; height: 15px; }
 .seg2 button.on { background: var(--accent-soft); color: var(--accent-400); border-color: var(--accent-ring); }
+/* legend item editor rows */
+.leg-row { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+.leg-chip { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--border-strong); cursor: pointer; padding: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
+.leg-row .input { height: 30px; font-size: 12px; min-width: 0; }
+.leg-label { flex: 1 1 auto; }
+.leg-value { flex: 0 0 52px; width: 52px; text-align: center; }
+.leg-x { flex: 0 0 auto; width: 28px; height: 30px; display: grid; place-items: center; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-3); border-radius: var(--r-sm); cursor: pointer; }
+.leg-x:hover:not(:disabled) { background: var(--danger); color: #fff; border-color: var(--danger); }
+.leg-x:disabled { opacity: .35; cursor: not-allowed; }
+.leg-x svg { width: 13px; height: 13px; }
+.leg-add { width: 100%; height: 32px; margin-top: 3px; }
 .prop-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px 16px; }
 
 /* layers */

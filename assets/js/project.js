@@ -139,6 +139,20 @@
     });
   });
 
+  document.getElementById("btnExport").addEventListener("click", function () {
+    UI.toast({ type: "info", title: "Preparing export…", desc: "Bundling “" + project.name + "”." });
+    Store.exportProject(projectId).then(function (res) {
+      var url = URL.createObjectURL(res.blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = res.filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      UI.toast({ type: "success", title: "Project exported", desc: res.filename });
+    }).catch(function (err) {
+      UI.toast({ type: "danger", title: "Export failed", desc: err.message || String(err) });
+    });
+  });
+
   document.getElementById("gallerySearch").addEventListener("input", function () { query = this.value.trim().toLowerCase(); renderGallery(); });
 
   // page-level drag/drop anywhere drops onto gallery

@@ -168,6 +168,24 @@
       var iwt = image ? image.w : 800;
       o.w = clamp(Math.round(iwt * 0.34), 160, 900);
       o.h = Math.round(o.titleSize * 1.35 + o.subtitleSize * 1.5 + o.bodySize * 2.6 + fs * 1.2);
+    } else if (kind === "legend") {
+      // A key/legend: a styled container of {color, label, value} items,
+      // laid out inline (a pill) or stacked. Auto-fits its content.
+      o.type = "legend"; o.text = "";
+      o.items = opts.items || [
+        { color: "#22C55E", label: "Undamaged", value: "35%" },
+        { color: "#EF4444", label: "Damaged", value: "65%" }
+      ];
+      o.layout = "inline";        // "inline" | "stacked"
+      o.showValue = true;         // show the "(value)" suffix
+      o.dotShape = "circle";      // "circle" | "square"
+      o.dotSize = Math.round(fs * 0.85);
+      o.labelColor = "#ffffff"; o.labelSize = Math.round(fs * 0.95); o.labelWeight = 600;
+      o.font = "Inter";
+      o.bg = "#1B2432"; o.bgOpacity = 0.92;
+      o.borderColor = "#00AEEF"; o.borderOpacity = 1; o.borderWidth = 0;
+      o.radius = 24; o.itemGap = 20; o.padX = 18; o.padY = 10;
+      fitLegend(o);
     }
     return o;
   }
@@ -315,6 +333,8 @@
       inner = '<div class="obj-content" style="' + tbContentStyle(o) + '">' + tbInnerHTML(o) + "</div>";
     } else if (o.type === "textbox") {
       inner = '<div class="obj-content" style="' + tbxContentStyle(o) + '">' + tbxInnerHTML(o) + "</div>";
+    } else if (o.type === "legend") {
+      inner = '<div class="obj-content" style="' + legendContentStyle(o) + '">' + legendInnerHTML(o) + "</div>";
     } else if (o.type === "photo") {
       inner = '<div class="obj-content" style="' + photoContentStyle(o) + '"><img src="' + o.src + '" draggable="false" style="width:100%;height:100%;object-fit:cover;display:block"></div>';
     } else {
@@ -435,6 +455,64 @@
       var st = "margin:0;color:" + o[f.color] + ";font-family:'" + o[f.font] + "';font-size:" + o[f.size] + "px;font-weight:" + o[f.weight] +
         ";" + (o[f.italic] ? "font-style:italic;" : "") + "line-height:1.25;text-align:" + o.align + ";width:100%;white-space:pre-wrap;word-break:break-word;";
       return '<div class="tbx-' + f.key + '" style="' + st + '">' + UI.escapeHtml(o[f.key]) + "</div>";
+    }).join("");
+  }
+  /* ---- legend (a key of {color,label,value} items, inline or stacked) ---- */
+  var LEGEND_PALETTE = ["#22C55E", "#EF4444", "#F59E0B", "#3B82F6", "#A855F7", "#EC4899", "#14B8A6", "#F97316"];
+  var _measureCanvas = null;
+  function measureTextW(txt, weight, size, font) {
+    if (!_measureCanvas) _measureCanvas = document.createElement("canvas");
+    var ctx = _measureCanvas.getContext("2d");
+    ctx.font = (weight || 400) + " " + (size || 14) + "px '" + (font || "Inter") + "', sans-serif";
+    return ctx.measureText(txt || "").width;
+  }
+  function legendItemText(o, it) {
+    var t = it.label || "";
+    if (o.showValue && String(it.value || "").trim()) t += " (" + it.value + ")";
+    return t;
+  }
+  // Compute one item's pixel width (dot + gap + text).
+  function legendItemW(o, it) {
+    var dotGap = Math.round(o.dotSize * 0.55);
+    return o.dotSize + dotGap + measureTextW(legendItemText(o, it), o.labelWeight, o.labelSize, o.font);
+  }
+  // Auto-size the box to hug its content for the current layout.
+  function fitLegend(o) {
+    var items = o.items || [];
+    var lineH = Math.max(Math.round(o.labelSize * 1.35), o.dotSize);
+    if (o.layout === "stacked") {
+      var maxW = 0;
+      items.forEach(function (it) { maxW = Math.max(maxW, legendItemW(o, it)); });
+      var vGap = Math.round(o.itemGap * 0.5);
+      o.w = Math.round(maxW + o.padX * 2);
+      o.h = Math.round(items.length * lineH + Math.max(0, items.length - 1) * vGap + o.padY * 2);
+    } else {
+      var total = 0;
+      items.forEach(function (it) { total += legendItemW(o, it); });
+      total += Math.max(0, items.length - 1) * o.itemGap;
+      o.w = Math.round(total + o.padX * 2);
+      o.h = Math.round(lineH + o.padY * 2);
+    }
+    var iw = image ? image.w : 2000;
+    o.w = Math.min(o.w, iw);
+  }
+  function legendContentStyle(o) {
+    var bd = o.borderWidth ? (o.borderWidth + "px " + cssBorderStyle(o) + " " + hexRgba(o.borderColor, o.borderOpacity)) : "none";
+    var dir = o.layout === "stacked" ? "column" : "row";
+    var wrap = o.layout === "stacked" ? "nowrap" : "wrap";
+    var gap = o.layout === "stacked" ? Math.round(o.itemGap * 0.5) : o.itemGap;
+    var align = o.layout === "stacked" ? "flex-start" : "center";
+    return "width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:" + dir + ";flex-wrap:" + wrap +
+      ";align-items:" + align + ";justify-content:center;gap:" + gap + "px;padding:" + o.padY + "px " + o.padX + "px;overflow:hidden;" +
+      "background:" + hexRgba(o.bg, o.bgOpacity == null ? 1 : o.bgOpacity) + ";border:" + bd + ";border-radius:" + o.radius + "px;";
+  }
+  function legendInnerHTML(o) {
+    var dotGap = Math.round(o.dotSize * 0.55);
+    var radius = o.dotShape === "square" ? Math.round(o.dotSize * 0.22) : "50%";
+    return (o.items || []).map(function (it) {
+      var dot = '<span style="flex:0 0 auto;width:' + o.dotSize + 'px;height:' + o.dotSize + 'px;border-radius:' + radius + (o.dotShape === "square" ? "px" : "") + ';background:' + it.color + '"></span>';
+      var txt = '<span style="color:' + o.labelColor + ";font-family:'" + o.font + "';font-size:" + o.labelSize + "px;font-weight:" + o.labelWeight + ';white-space:nowrap;line-height:1.2">' + UI.escapeHtml(legendItemText(o, it)) + "</span>";
+      return '<span style="display:inline-flex;align-items:center;gap:' + dotGap + 'px">' + dot + txt + "</span>";
     }).join("");
   }
   function tbInnerHTML(o) {
@@ -723,6 +801,51 @@
         numRow("Radius", "radius", o.radius, 0, 80) +
         numRow("Border", "borderWidth", o.borderWidth, 0, 20) +
         (o.borderWidth ? colorRow("borderColor", o.borderColor) + strokeStyleRow(o) : "") + "</div>";
+    } else if (o.type === "legend") {
+      var legBg = o.bg && o.bg !== "transparent";
+      // Layout
+      html += '<div class="prop-group"><h4>Layout</h4>' +
+        '<div class="prop-row"><label>Arrangement</label><div class="ctrl seg2">' +
+          '<button data-leglayout="inline" class="' + (o.layout !== "stacked" ? "on" : "") + '">Inline</button>' +
+          '<button data-leglayout="stacked" class="' + (o.layout === "stacked" ? "on" : "") + '">Stacked</button></div></div>' +
+        '<div class="prop-row"><label>Show value</label><div class="ctrl seg2">' +
+          '<button data-leg-showvalue="on" class="' + (o.showValue ? "on" : "") + '">On</button>' +
+          '<button data-leg-showvalue="off" class="' + (!o.showValue ? "on" : "") + '">Off</button></div></div>' +
+        '<div class="prop-row"><label>Dot shape</label><div class="ctrl seg2">' +
+          '<button data-legdot="circle" class="' + (o.dotShape !== "square" ? "on" : "") + '">Circle</button>' +
+          '<button data-legdot="square" class="' + (o.dotShape === "square" ? "on" : "") + '">Square</button></div></div>' +
+        "</div>";
+      // Items (repeatable)
+      html += '<div class="prop-group"><h4>Items</h4>';
+      o.items.forEach(function (it, i) {
+        html += '<div class="leg-row">' +
+          '<button class="leg-chip" data-legcolor="' + i + '" title="Item colour" style="background:' + it.color + '"></button>' +
+          '<input class="input leg-label" data-legfield="label" data-legidx="' + i + '" value="' + UI.escapeHtml(it.label || "") + '" placeholder="Label">' +
+          '<input class="input leg-value" data-legfield="value" data-legidx="' + i + '" value="' + UI.escapeHtml(it.value || "") + '" placeholder="Val">' +
+          '<button class="leg-x" data-legdel="' + i + '"' + (o.items.length <= 2 ? " disabled title=\"Minimum 2 items\"" : ' title="Remove item"') + ">" + Icons.svg("trash", { size: 13 }) + "</button>" +
+          "</div>";
+      });
+      html += '<button class="view-btn leg-add" data-legadd="1">' + Icons.svg("plus", { size: 14 }) + "Add item</button></div>";
+      // Labels & dots
+      html += '<div class="prop-group"><h4>Labels &amp; dots</h4>' + colorRow("labelColor", o.labelColor) +
+        numRow("Text size", "labelSize", o.labelSize, 8, 80) +
+        '<div class="prop-row"><label>Weight</label><div class="ctrl seg2">' +
+          '<button data-legweight="400" class="' + (o.labelWeight <= 400 ? "on" : "") + '">Regular</button>' +
+          '<button data-legweight="600" class="' + (o.labelWeight > 400 && o.labelWeight < 700 ? "on" : "") + '">Medium</button>' +
+          '<button data-legweight="700" class="' + (o.labelWeight >= 700 ? "on" : "") + '">Bold</button></div></div>' +
+        numRow("Dot size", "dotSize", o.dotSize, 4, 60) +
+        numRow("Item gap", "itemGap", o.itemGap, 0, 80) + "</div>";
+      // Box
+      html += '<div class="prop-group"><h4>Box</h4>' +
+        '<div class="prop-row"><label>Background</label><div class="ctrl seg2">' +
+          '<button data-fill="off" class="' + (!legBg ? "on" : "") + '">None</button>' +
+          '<button data-fill="on" class="' + (legBg ? "on" : "") + '">Solid</button></div></div>' +
+        (legBg ? colorRow("bg", o.bg) + sliderRow("Opacity", "bgOpacity", Math.round((o.bgOpacity == null ? 1 : o.bgOpacity) * 100), 0, 100, "%") : "") +
+        numRow("Radius", "radius", o.radius, 0, 80) +
+        numRow("Padding X", "padX", o.padX, 0, 80) +
+        numRow("Padding Y", "padY", o.padY, 0, 60) +
+        numRow("Border", "borderWidth", o.borderWidth, 0, 20) +
+        (o.borderWidth ? colorRow("borderColor", o.borderColor) + strokeStyleRow(o) : "") + "</div>";
     } else if (o.type === "photo") {
       html += '<div class="prop-group"><h4>Image</h4><div class="prop-row" style="gap:6px">' +
         '<button class="view-btn" data-act="photo-replace" style="flex:1">' + Icons.svg("image", { size: 14 }) + "Replace image</button></div></div>";
@@ -912,10 +1035,11 @@
         var ob = getSel(); if (!ob) return;
         var v = input.value;
         if (/opacity$/i.test(prop)) { ob[prop] = clamp(+v / 100, 0, 1); var val = input.parentElement.querySelector(".val"); if (val) val.textContent = v + "%"; }
-        else if (["w", "h", "fontSize", "radius", "borderWidth", "fontWeight", "titleSize", "subSize", "logoSize", "leaderAngle", "leaderLength", "subtitleSize", "bodySize", "headScale"].indexOf(prop) > -1) ob[prop] = +v;
+        else if (["w", "h", "fontSize", "radius", "borderWidth", "fontWeight", "titleSize", "subSize", "logoSize", "leaderAngle", "leaderLength", "subtitleSize", "bodySize", "headScale", "labelSize", "dotSize", "itemGap", "padX", "padY"].indexOf(prop) > -1) ob[prop] = +v;
         else if (prop === "rot") ob.rot = +v;
         else ob[prop] = v;
         if (prop === "text" || prop === "fontSize" || prop === "font") fitTextBox(ob);
+        if (ob.type === "legend") fitLegend(ob);
         renderObjects(); wireObjectEvents();
         if (!/opacity$/i.test(prop) && ev === "change") { pushHistory(); markDirty(); renderLayers(); if (prop === "borderWidth" || prop === "captionStyle" || prop === "arrowHead") renderProps(); }
         else markDirty();
@@ -974,6 +1098,50 @@
         picker.click();
       });
     });
+    // ---- legend controls ----
+    panel.querySelectorAll("[data-leglayout]").forEach(function (b) {
+      b.addEventListener("click", function () { var ob = getSel(); ob.layout = b.getAttribute("data-leglayout"); fitLegend(ob); renderObjects(); wireObjectEvents(); renderProps(); pushHistory(); markDirty(); });
+    });
+    panel.querySelectorAll("[data-leg-showvalue]").forEach(function (b) {
+      b.addEventListener("click", function () { var ob = getSel(); ob.showValue = b.getAttribute("data-leg-showvalue") === "on"; fitLegend(ob); renderObjects(); wireObjectEvents(); renderProps(); pushHistory(); markDirty(); });
+    });
+    panel.querySelectorAll("[data-legdot]").forEach(function (b) {
+      b.addEventListener("click", function () { var ob = getSel(); ob.dotShape = b.getAttribute("data-legdot"); renderObjects(); wireObjectEvents(); renderProps(); pushHistory(); markDirty(); });
+    });
+    panel.querySelectorAll("[data-legweight]").forEach(function (b) {
+      b.addEventListener("click", function () { var ob = getSel(); ob.labelWeight = +b.getAttribute("data-legweight"); fitLegend(ob); renderObjects(); wireObjectEvents(); renderProps(); pushHistory(); markDirty(); });
+    });
+    panel.querySelectorAll("[data-legfield]").forEach(function (inp) {
+      inp.addEventListener("input", function () {
+        var ob = getSel(); var i = +inp.getAttribute("data-legidx"); var f = inp.getAttribute("data-legfield");
+        if (!ob.items[i]) return;
+        ob.items[i][f] = inp.value; fitLegend(ob); renderObjects(); wireObjectEvents(); markDirty();
+      });
+      inp.addEventListener("change", function () { pushHistory(); markDirty(); });
+    });
+    panel.querySelectorAll("[data-legcolor]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var ob = getSel(); var i = +b.getAttribute("data-legcolor"); var picker = $("hiddenColor");
+        picker.value = /^#/.test(ob.items[i].color) ? ob.items[i].color : "#22C55E";
+        picker.onchange = function () { ob.items[i].color = picker.value; renderObjects(); wireObjectEvents(); renderProps(); pushHistory(); markDirty(); };
+        picker.click();
+      });
+    });
+    panel.querySelectorAll("[data-legdel]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var ob = getSel(); if (ob.items.length <= 2) return;
+        ob.items.splice(+b.getAttribute("data-legdel"), 1);
+        fitLegend(ob); renderObjects(); wireObjectEvents(); renderProps(); pushHistory(); markDirty();
+      });
+    });
+    panel.querySelectorAll("[data-legadd]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var ob = getSel();
+        var c = LEGEND_PALETTE[ob.items.length % LEGEND_PALETTE.length];
+        ob.items.push({ color: c, label: "Item " + (ob.items.length + 1), value: "" });
+        fitLegend(ob); renderObjects(); wireObjectEvents(); renderProps(); pushHistory(); markDirty();
+      });
+    });
     panel.querySelectorAll("[data-act]").forEach(function (b) {
       b.addEventListener("click", function () {
         var act = b.getAttribute("data-act");
@@ -1024,8 +1192,8 @@
     var sorted = S.objects.slice().sort(function (a, b) { return (b.z || 0) - (a.z || 0); });
     if (!sorted.length) { list.innerHTML = '<p class="muted" style="font-size:12px">No objects yet.</p>'; return; }
     list.innerHTML = (sorted.length > 1 ? '<p class="layers-hint">Drag to reorder · top sits in front</p>' : "") + sorted.map(function (o) {
-      var ic = o.type === "icon" ? o.iconKey : (o.type === "shape" ? "shapes" : ((o.type === "polygon" || o.type === "polyline") ? "edit" : (o.type === "arrow" ? "arrowRt" : (o.type === "titlebar" ? "layout" : (o.type === "textbox" ? "text" : (o.type === "photo" ? "image" : "tag"))))));
-      var label = o.type === "titlebar" ? (o.title || "Title bar") : (o.type === "textbox" ? (o.title || o.subtitle || o.body || "Text box") : (o.type === "photo" ? "Image" : (o.text || (o.type.charAt(0).toUpperCase() + o.type.slice(1)) + (o.shapeKind ? " · " + o.shapeKind : ""))));
+      var ic = o.type === "icon" ? o.iconKey : (o.type === "shape" ? "shapes" : ((o.type === "polygon" || o.type === "polyline") ? "edit" : (o.type === "arrow" ? "arrowRt" : (o.type === "titlebar" ? "layout" : (o.type === "textbox" ? "text" : (o.type === "legend" ? "gridDots" : (o.type === "photo" ? "image" : "tag")))))));
+      var label = o.type === "titlebar" ? (o.title || "Title bar") : (o.type === "textbox" ? (o.title || o.subtitle || o.body || "Text box") : (o.type === "legend" ? "Legend" : (o.type === "photo" ? "Image" : (o.text || (o.type.charAt(0).toUpperCase() + o.type.slice(1)) + (o.shapeKind ? " · " + o.shapeKind : "")))));
       return '<div class="layer-item' + (isSelected(o.id) ? " on" : "") + (o.locked ? " locked" : "") + '" data-id="' + o.id + '" draggable="' + (o.locked ? "false" : "true") + '">' +
         '<span class="li-grip" title="Drag to reorder">' + Icons.svg("grip", { size: 13 }) + "</span>" +
         '<span class="li-ic">' + Icons.svg(ic, { size: 14 }) + "</span>" +
@@ -1232,6 +1400,7 @@
         '<div class="lib-item" draggable="true" data-kind="titlebar" data-text=""><span class="li-icon">' + Icons.svg("layout", { size: 16 }) + '</span>Title Bar<span class="li-add">' + Icons.svg("plus", { size: 14 }) + "</span></div>" +
         '<div class="lib-item" draggable="true" data-kind="datestamp" data-text=""><span class="li-icon">' + Icons.svg("clock", { size: 16 }) + '</span>Date Stamp<span class="li-add">' + Icons.svg("plus", { size: 14 }) + "</span></div>" +
         '<div class="lib-item" draggable="true" data-kind="textbox" data-text=""><span class="li-icon">' + Icons.svg("text", { size: 16 }) + '</span>Text Box<span class="li-add">' + Icons.svg("plus", { size: 14 }) + "</span></div>" +
+        '<div class="lib-item" draggable="true" data-kind="legend" data-text=""><span class="li-icon">' + Icons.svg("gridDots", { size: 16 }) + '</span>Legend<span class="li-add">' + Icons.svg("plus", { size: 14 }) + "</span></div>" +
         '<div class="lib-item" data-kind="photo"><span class="li-icon">' + Icons.svg("image", { size: 16 }) + '</span>Image Overlay<span class="li-add">' + Icons.svg("plus", { size: 14 }) + "</span></div>" +
         "</div>";
     } else if (activeTab === "icons") {
@@ -1375,6 +1544,7 @@
     if (kind === "datestamp") addObject("datestamp", {}, atImage);
     else if (kind === "titlebar") addObject("titlebar", {}, atImage);
     else if (kind === "textbox") addObject("textbox", {}, atImage);
+    else if (kind === "legend") addObject("legend", {}, atImage);
     else if (kind === "photo") addImageObject(atImage);
     else if (kind === "label" || kind === "caption") addObject(kind, { text: item.getAttribute("data-text"), iconSide: item.getAttribute("data-iconside"), iconKey: item.getAttribute("data-iconkey") }, atImage);
     else if (kind === "icon") addObject("icon", { iconKey: item.getAttribute("data-icon") }, atImage);
@@ -1399,6 +1569,7 @@
     else if (p.kind === "datestamp") addObject("datestamp", {}, at);
     else if (p.kind === "titlebar") addObject("titlebar", {}, at);
     else if (p.kind === "textbox") addObject("textbox", {}, at);
+    else if (p.kind === "legend") addObject("legend", {}, at);
     else if (p.kind === "photo") addImageObject(at);
     else if (p.kind === "brandasset") placeBrandAsset(p.brandId, at);
     else addObject(p.kind, { text: p.text, iconSide: p.iconSide, iconKey: p.iconKey }, at);
@@ -1533,6 +1704,7 @@
       if (o.type === "label" || o.type === "caption") content.setAttribute("style", captionBoxStyle(o));
       else if (o.type === "titlebar") { content.setAttribute("style", tbContentStyle(o)); content.innerHTML = tbInnerHTML(o); return; }
       else if (o.type === "textbox") { content.setAttribute("style", tbxContentStyle(o)); content.innerHTML = tbxInnerHTML(o); return; }
+      else if (o.type === "legend") { content.setAttribute("style", legendContentStyle(o)); content.innerHTML = legendInnerHTML(o); return; }
       else if (o.type === "photo") { content.setAttribute("style", photoContentStyle(o)); return; }
       else if (o.type === "shape" || o.type === "polygon") content.style.filter = o.dropShadow ? shapeShadowCss(o).replace(/^filter:|;$/g, "") : "";
       content.innerHTML = objContentHTML(o);
@@ -1915,6 +2087,8 @@
       drawTitleBar(ctx, o, x, y, function () { ctx.restore(); done(); });
     } else if (o.type === "textbox") {
       drawTextbox(ctx, o, x, y); ctx.restore(); done();
+    } else if (o.type === "legend") {
+      drawLegend(ctx, o, x, y); ctx.restore(); done();
     } else if (o.type === "photo") {
       drawPhoto(ctx, o, x, y, function () { ctx.restore(); done(); });
     } else {
@@ -1973,6 +2147,48 @@
       ctx.fillText(b.text, tx, cy);
       cy += b.lh;
     });
+    ctx.restore();
+  }
+
+  // Render a legend (inline pill or stacked key) onto the export canvas.
+  function drawLegend(ctx, o, x, y) {
+    var r = Math.min(o.radius, o.w / 2, o.h / 2);
+    if (o.bg && o.bg !== "transparent") { ctx.fillStyle = hexRgba(o.bg, o.bgOpacity == null ? 1 : o.bgOpacity); roundRect(ctx, x, y, o.w, o.h, r); ctx.fill(); }
+    if (o.borderWidth) { ctx.strokeStyle = hexRgba(o.borderColor, o.borderOpacity); ctx.lineWidth = o.borderWidth; applyCanvasDash(ctx, o, o.borderWidth); roundRect(ctx, x, y, o.w, o.h, r); ctx.stroke(); ctx.setLineDash([]); }
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, o.w, o.h); ctx.clip();
+    var dotGap = Math.round(o.dotSize * 0.55);
+    var font = o.labelWeight + " " + o.labelSize + "px '" + o.font + "', sans-serif";
+    ctx.font = font; ctx.textBaseline = "middle";
+    var dotR = o.dotSize / 2;
+    function drawItem(it, ix, iy) {
+      // dot
+      ctx.fillStyle = it.color;
+      if (o.dotShape === "square") {
+        var rr = Math.round(o.dotSize * 0.22);
+        roundRect(ctx, ix, iy - dotR, o.dotSize, o.dotSize, rr); ctx.fill();
+      } else {
+        ctx.beginPath(); ctx.arc(ix + dotR, iy, dotR, 0, Math.PI * 2); ctx.fill();
+      }
+      // text
+      ctx.fillStyle = o.labelColor; ctx.textAlign = "left";
+      ctx.fillText(legendItemText(o, it), ix + o.dotSize + dotGap, iy + 1);
+    }
+    if (o.layout === "stacked") {
+      var lineH = Math.max(Math.round(o.labelSize * 1.35), o.dotSize);
+      var vGap = Math.round(o.itemGap * 0.5);
+      var cy = y + o.padY;
+      o.items.forEach(function (it) {
+        drawItem(it, x + o.padX, cy + lineH / 2);
+        cy += lineH + vGap;
+      });
+    } else {
+      var cyc = y + o.h / 2;
+      var cx = x + o.padX;
+      o.items.forEach(function (it) {
+        drawItem(it, cx, cyc);
+        cx += legendItemW(o, it) + o.itemGap;
+      });
+    }
     ctx.restore();
   }
 

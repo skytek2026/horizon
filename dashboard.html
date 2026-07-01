@@ -15,6 +15,7 @@
       <button class="btn btn--icon btn--ghost menu-toggle" id="menuToggle" aria-label="Menu"><span data-icon="menu"></span></button>
       <h1>Dashboard</h1>
       <div class="spacer"></div>
+      <button class="btn btn--secondary" id="btnImport"><span data-icon="upload"></span>Import</button>
       <button class="btn btn--primary" id="btnNew"><span data-icon="plus"></span>New Project</button>
       <button class="btn btn--icon btn--ghost" id="themeToggle" aria-label="Toggle theme"><span data-icon="moon"></span></button>
     </header>
@@ -57,7 +58,10 @@
   </main>
 </div>
 
+<input type="file" id="importInput" accept=".skproj,application/zip" class="hidden">
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="assets/js/supabase-config.js"></script>
 <script src="assets/js/store.js"></script>
 <script src="assets/js/library.js"></script>
