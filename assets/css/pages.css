@@ -1,0 +1,168 @@
+/* ============================================================
+   pages.css — Dashboard, Project gallery, Settings page styles
+   (Editor has its own stylesheet: editor.css)
+   ============================================================ */
+
+/* ---- shared section ---- */
+.sec { margin-top: 36px; }
+.sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; }
+.sec-head h3 { font-size: 17px; font-weight: 600; }
+.sec-head .muted { font-size: 13px; }
+
+/* ============================================================
+   WELCOME
+   ============================================================ */
+.welcome {
+  display: flex; align-items: center; gap: 30px; justify-content: space-between;
+  padding: 30px 32px; flex-wrap: wrap;
+  background:
+    radial-gradient(700px 300px at 100% 0%, rgba(0,174,239,0.10), transparent 60%),
+    var(--glass);
+}
+.welcome-text { max-width: 560px; }
+.welcome-text h2 { font-size: 27px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }
+.welcome-text p { color: var(--text-2); font-size: 15px; line-height: 1.55; }
+.welcome-stats { display: flex; gap: 14px; flex-wrap: wrap; }
+.stat {
+  min-width: 124px; padding: 16px 18px; border-radius: var(--r-lg);
+  background: var(--panel-2); border: 1px solid var(--border);
+}
+.stat .v { font-family: var(--font-display); font-size: 28px; font-weight: 700; line-height: 1; color: var(--accent-400); font-variant-numeric: tabular-nums; }
+.stat .v.neutral { color: var(--text); }
+.stat .l { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+
+/* ============================================================
+   PROJECT GRID
+   ============================================================ */
+.project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+.project-card { overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
+.project-card:hover { border-color: var(--border-strong); box-shadow: var(--sh-2); transform: translateY(-2px); }
+.pc-thumb {
+  height: 152px; position: relative; overflow: hidden;
+  background: var(--panel-2);
+  display: grid; place-items: center;
+}
+.pc-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--m-slow) var(--ease); }
+.project-card:hover .pc-thumb img { transform: scale(1.04); }
+.pc-thumb-empty { color: var(--text-muted); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.pc-thumb-empty svg { width: 34px; height: 34px; opacity: .6; }
+.pc-thumb-empty span { font-size: 12px; }
+.pc-count {
+  position: absolute; top: 10px; right: 10px;
+  background: rgba(7,12,20,0.72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  color: #fff; font-size: 11px; font-weight: 600; padding: 4px 9px; border-radius: var(--r-pill);
+  display: flex; align-items: center; gap: 5px; border: 1px solid rgba(255,255,255,.14);
+}
+.pc-count svg { width: 12px; height: 12px; }
+.pc-body { padding: 15px 16px; display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.pc-name { font-size: 15px; font-weight: 600; }
+.pc-desc { font-size: 12.5px; color: var(--text-3); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 18px; }
+.pc-meta { font-size: 11.5px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.pc-foot { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border-faint); background: var(--panel-2); }
+.pc-foot .btn { flex: 1; }
+
+/* ============================================================
+   RECENT GRID
+   ============================================================ */
+.recent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
+.recent-card { overflow: hidden; cursor: pointer; }
+.recent-card:hover { border-color: var(--border-strong); transform: translateY(-2px); box-shadow: var(--sh-2); }
+.rc-thumb { height: 110px; background: var(--panel-2); display: grid; place-items: center; overflow: hidden; }
+.rc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.rc-body { padding: 10px 12px; }
+.rc-name { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+/* ============================================================
+   TEMPLATE GRID
+   ============================================================ */
+.template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.template-card { padding: 20px; cursor: pointer; display: flex; flex-direction: column; gap: 10px; }
+.template-card:hover { border-color: var(--accent-ring); transform: translateY(-2px); box-shadow: var(--sh-2); }
+.tc-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-400); display: grid; place-items: center; }
+.tc-icon svg { width: 22px; height: 22px; }
+.tc-name { font-size: 15px; font-weight: 600; }
+.tc-desc { font-size: 12.5px; color: var(--text-3); line-height: 1.45; }
+.tc-foot { margin-top: auto; font-size: 12px; color: var(--accent-400); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.tc-foot svg { width: 14px; height: 14px; }
+
+/* ============================================================
+   PROJECT GALLERY PAGE
+   ============================================================ */
+.proj-hero { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+.proj-hero .ph-text { flex: 1; min-width: 240px; }
+.proj-hero h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+.proj-hero .ph-desc { color: var(--text-2); font-size: 14px; margin-top: 6px; max-width: 60ch; }
+.proj-hero .ph-meta { display: flex; gap: 16px; margin-top: 12px; font-size: 12.5px; color: var(--text-muted); flex-wrap: wrap; }
+.proj-hero .ph-meta span { display: inline-flex; align-items: center; gap: 6px; }
+.proj-hero .ph-meta svg { width: 14px; height: 14px; }
+
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 18px; margin-top: 26px; }
+.img-card { overflow: hidden; cursor: pointer; }
+.img-card:hover { border-color: var(--border-strong); transform: translateY(-2px); box-shadow: var(--sh-2); }
+.ic-thumb { height: 156px; background: var(--panel-2); position: relative; display: grid; place-items: center; overflow: hidden; }
+.ic-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ic-badge { position: absolute; bottom: 8px; left: 8px; background: rgba(7,12,20,0.74); color:#fff; font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: var(--r-pill); border:1px solid rgba(255,255,255,.14); display:flex; align-items:center; gap:5px; }
+.ic-badge svg { width: 11px; height: 11px; }
+.ic-body { padding: 12px 13px; }
+.ic-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ic-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+.ic-actions { display: flex; gap: 6px; padding: 10px 13px; border-top: 1px solid var(--border-faint); background: var(--panel-2); }
+.ic-actions .btn { flex: 1; }
+
+.upload-tile {
+  border: 2px dashed var(--border-strong); border-radius: var(--r-lg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  min-height: 156px; cursor: pointer; color: var(--text-3); text-align: center; padding: 20px;
+  transition: border-color var(--m-fast), background var(--m-fast), color var(--m-fast);
+}
+.upload-tile:hover, .upload-tile.drag { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-400); }
+.upload-tile svg { width: 30px; height: 30px; }
+.upload-tile b { font-size: 13.5px; color: var(--text-2); }
+.upload-tile small { font-size: 11.5px; }
+
+/* breadcrumb */
+.crumbs { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-3); }
+.crumbs a:hover { color: var(--text); }
+.crumbs svg { width: 14px; height: 14px; opacity: .6; }
+
+/* ============================================================
+   SETTINGS PAGE
+   ============================================================ */
+.settings-wrap { max-width: 720px; }
+.settings-group { margin-bottom: 22px; }
+.settings-group > h3 { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+.setting-row {
+  display: flex; align-items: center; gap: 16px; justify-content: space-between;
+  padding: 16px 18px; border-bottom: 1px solid var(--border-faint);
+}
+.setting-row:last-child { border-bottom: 0; }
+.setting-info { flex: 1; }
+.setting-info .st { font-size: 14px; font-weight: 600; }
+.setting-info .sd { font-size: 12.5px; color: var(--text-3); margin-top: 2px; }
+.setting-control { flex-shrink: 0; display: flex; align-items: center; gap: 10px; }
+.setting-control .input, .setting-control .select { width: 180px; }
+
+/* toggle switch */
+.switch { width: 44px; height: 25px; border-radius: 9999px; background: var(--panel-3); border: 1px solid var(--border); position: relative; cursor: pointer; transition: background var(--m-fast); flex-shrink: 0; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 19px; height: 19px; border-radius: 50%; background: var(--text-3); transition: transform var(--m-fast) var(--ease), background var(--m-fast); }
+.switch.on { background: var(--accent); border-color: var(--accent); }
+.switch.on::after { transform: translateX(19px); background: #fff; }
+
+.danger-zone { border-color: rgba(239,68,68,.3); }
+.danger-zone .st { color: var(--danger); }
+
+/* segmented control */
+.segmented { display: inline-flex; background: var(--panel-3); border: 1px solid var(--border); border-radius: var(--r-md); padding: 3px; gap: 3px; }
+.segmented button { border: 0; background: transparent; color: var(--text-2); font-size: 12.5px; font-weight: 600; padding: 7px 14px; border-radius: var(--r-sm); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background var(--m-fast), color var(--m-fast); }
+.segmented button svg { width: 15px; height: 15px; }
+.segmented button.on { background: var(--accent); color: #04222e; }
+
+@media (max-width: 600px) {
+  .welcome { flex-direction: column; align-items: stretch; }
+  .welcome-stats { justify-content: space-between; }
+  .stat { flex: 1; min-width: 0; }
+  .setting-row { flex-direction: column; align-items: stretch; }
+  .setting-control { justify-content: flex-start; }
+  .setting-control .input, .setting-control .select { width: 100%; }
+}
