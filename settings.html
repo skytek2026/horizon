@@ -119,6 +119,8 @@
   </main>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/js/supabase-config.js"></script>
 <script src="assets/js/store.js"></script>
 <script src="assets/js/library.js"></script>
 <script src="assets/js/ui.js"></script>
@@ -182,12 +184,13 @@
   document.getElementById("clearData").addEventListener("click", function () {
     UI.confirm({
       title: "Clear all data?", danger: true,
-      message: "Every project, image and setting will be permanently deleted from this browser. This cannot be undone.",
+      message: "Every project and image will be permanently deleted from the shared Supabase database — for everyone, on all devices. This cannot be undone.",
       confirmText: "Delete everything",
       onConfirm: function () {
-        Store.clearAll();
-        UI.toast({ type: "success", title: "All data cleared" });
-        setTimeout(function () { location.href = "index.html"; }, 700);
+        Store.clearAll(function () {
+          UI.toast({ type: "success", title: "All data cleared" });
+          setTimeout(function () { location.href = "index.html"; }, 500);
+        });
       }
     });
   });
