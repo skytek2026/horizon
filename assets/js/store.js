@@ -1,28 +1,40 @@
 /* ============================================================
-   store.js — data layer for Skytek Caption Studio
-   Metadata (projects, settings, session) lives in localStorage.
-   Image bytes (heavy base64) live in IndexedDB, mirrored in an
-   in-memory cache so the rest of the app keeps a synchronous API.
-   Call Store.ready(cb) once per page before rendering images.
+   store.js — data layer for Skytek Image Caption Studio
+   ------------------------------------------------------------
+   PROJECTS, IMAGES and BRAND ASSETS live in Supabase:
+     • metadata  → Postgres tables (projects / images / brand_assets)
+     • image bytes → Supabase Storage (private bucket, see config)
+   DEVICE-LOCAL prefs stay in localStorage:
+     • session (login), settings, recent feed, last-opened project.
+
+   The rest of the app keeps its synchronous API. On page load,
+   Store.ready(cb) connects, pulls all metadata into an in-memory
+   cache, downloads image bytes as data URLs (so canvas export is
+   never tainted by cross-origin URLs), then fires cb. Writes update
+   the cache immediately (optimistic) and sync to Supabase in the
+   background; Store.flush(cb) waits for pending writes to settle
+   before a navigation that depends on them.
    ============================================================ */
 (function () {
   "use strict";
 
+  var CFG = window.SUPABASE_CONFIG || {};
+  var BUCKET = CFG.bucket || "caption-images";
+  var sb = (window.supabase && CFG.url && CFG.key)
+    ? window.supabase.createClient(CFG.url, CFG.key, { auth: { persistSession: false } })
+    : null;
+
   var KEYS = {
     session:  "skytek.session",
     settings: "skytek.settings",
-    projects: "skytek.projects",
     recent:   "skytek.recent",
-    lastOpen: "skytek.lastProject",
-    brand:    "skytek.brand"
+    lastOpen: "skytek.lastProject"
   };
 
-  /* ---- low-level localStorage helpers ---- */
+  /* ---- localStorage helpers (device-local prefs only) ---- */
   function read(key, fallback) {
-    try {
-      var raw = localStorage.getItem(key);
-      return raw == null ? fallback : JSON.parse(raw);
-    } catch (e) { return fallback; }
+    try { var raw = localStorage.getItem(key); return raw == null ? fallback : JSON.parse(raw); }
+    catch (e) { return fallback; }
   }
   function write(key, val) {
     try { localStorage.setItem(key, JSON.stringify(val)); return true; }
@@ -31,423 +43,446 @@
   function uid(prefix) {
     return (prefix || "id") + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
   }
+  function iso(ms) { return new Date(ms || Date.now()).toISOString(); }
+  function ms(ts) { var n = Date.parse(ts); return isNaN(n) ? Date.now() : n; }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
   /* ============================================================
-     IMAGE BLOB STORE (IndexedDB + in-memory cache)
-     IMG[id] = base64 data URL. IndexedDB gives us hundreds of MB
-     to GB of room, versus localStorage's ~5MB hard cap.
+     IN-MEMORY CACHE
+     _projects: [{ id, name, description, createdAt, updatedAt, images:[
+        { id, filename, w, h, addedAt, updatedAt, objects } ] }]
+     _brand:    [{ id, name, w, h, addedAt }]
+     IMG[id] = base64 data URL (image bytes, same-origin for canvas)
+     PATH[id] = storage path in the bucket
   ============================================================ */
-  var DB_NAME = "skytek", DB_STORE = "images", DB_VER = 1;
-  var _db = null, idbOK = false, IMG = {};
-  var _ready = false, _starting = false, _readyCbs = [];
+  var _projects = [], _brand = [], IMG = {}, PATH = {};
+  var _ready = false, _starting = false, _readyCbs = [], _fatal = false;
 
-  function openDB(cb) {
-    if (!("indexedDB" in window) || !window.indexedDB) { cb(null); return; }
-    try {
-      var req = indexedDB.open(DB_NAME, DB_VER);
-      req.onupgradeneeded = function () {
-        var db = req.result;
-        if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
-      };
-      req.onsuccess = function () { cb(req.result); };
-      req.onerror = function () { cb(null); };
-    } catch (e) { cb(null); }
-  }
-  function idbPut(id, val) {
-    if (!_db) return;
-    try { _db.transaction(DB_STORE, "readwrite").objectStore(DB_STORE).put(val, id); } catch (e) {}
-  }
-  function idbDelete(id) {
-    if (!_db) return;
-    try { _db.transaction(DB_STORE, "readwrite").objectStore(DB_STORE).delete(id); } catch (e) {}
-  }
-  function idbLoadAll(cb) {
-    if (!_db) { cb(); return; }
-    try {
-      var store = _db.transaction(DB_STORE, "readonly").objectStore(DB_STORE);
-      var cur = store.openCursor();
-      cur.onsuccess = function (e) {
-        var c = e.target.result;
-        if (c) { IMG[c.key] = c.value; c.continue(); }
-        else cb();
-      };
-      cur.onerror = function () { cb(); };
-    } catch (e) { cb(); }
-  }
-
-  // One-time move of any inline base64 that still lives in the localStorage
-  // projects blob (legacy data) into IndexedDB, then strip it out so the blob
-  // becomes tiny and the ~5MB quota is freed.
-  function migrateInlineSrcs() {
-    var list = read(KEYS.projects, []);
-    var changed = false;
-    list.forEach(function (p) {
-      if (p.thumbnail) { p.thumbnail = null; changed = true; }
-      (p.images || []).forEach(function (im) {
-        if (im.src) {
-          IMG[im.id] = im.src;
-          idbPut(im.id, im.src);
-          delete im.src;
-          changed = true;
-        }
-      });
+  /* ---- pending-write tracking (for flush before navigation) ---- */
+  var _pending = 0, _flushCbs = [];
+  function track(promise) {
+    _pending++;
+    function settle() {
+      _pending = Math.max(0, _pending - 1);
+      if (_pending === 0) { var cbs = _flushCbs.slice(); _flushCbs.length = 0; cbs.forEach(function (f) { try { f(); } catch (e) {} }); }
+    }
+    promise.then(settle, function (err) {
+      console.error("Supabase sync failed:", err);
+      if (window.UI && UI.toast) UI.toast({ type: "danger", title: "Sync problem", desc: "A recent change may not have been saved." });
+      settle();
     });
-    if (changed) write(KEYS.projects, list);
+  }
+  function flush(cb) { if (_pending <= 0) { if (cb) cb(); return; } if (cb) _flushCbs.push(cb); }
+  // Surface a query error into track()'s catch handler.
+  function chk(res) { if (res && res.error) throw res.error; return res; }
+
+  /* ---- binary helpers ---- */
+  function extFromDataUrl(d) {
+    var m = /^data:image\/([a-z0-9.+-]+)/i.exec(d || "");
+    var t = (m ? m[1] : "png").toLowerCase();
+    if (t === "jpeg") return ".jpg";
+    if (t === "svg+xml") return ".svg";
+    return "." + t;
+  }
+  function dataUrlToBlob(d) {
+    var parts = d.split(","), mime = (/data:([^;]+)/.exec(parts[0]) || [])[1] || "image/png";
+    var bin = atob(parts[1]), len = bin.length, arr = new Uint8Array(len);
+    for (var i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+  function blobToDataUrl(blob) {
+    return new Promise(function (res, rej) {
+      var fr = new FileReader();
+      fr.onload = function () { res(fr.result); };
+      fr.onerror = function () { rej(fr.error); };
+      fr.readAsDataURL(blob);
+    });
+  }
+  function uploadDataUrl(dataUrl, path) {
+    var blob = dataUrlToBlob(dataUrl);
+    return sb.storage.from(BUCKET).upload(path, blob, { upsert: true, contentType: blob.type || "image/png" })
+      .then(function (res) { if (res && res.error) throw res.error; return res; });
+  }
+  function removePaths(paths) {
+    paths = paths.filter(Boolean);
+    if (!paths.length) return Promise.resolve();
+    return sb.storage.from(BUCKET).remove(paths);
   }
 
-  // Ready = DB open + cache loaded + legacy data migrated. Safe to call many
-  // times; every callback fires once initialisation has completed.
+  // Concurrency-limited task runner.
+  function runLimited(items, limit, fn) {
+    return new Promise(function (resolve) {
+      var i = 0, active = 0, done = 0, n = items.length;
+      if (!n) return resolve();
+      function next() {
+        while (active < limit && i < n) {
+          var item = items[i++]; active++;
+          Promise.resolve(fn(item)).then(fin, fin);
+        }
+      }
+      function fin() { active--; if (++done >= n) resolve(); else next(); }
+      next();
+    });
+  }
+
+  /* ============================================================
+     CONNECT + LOAD
+  ============================================================ */
   function ready(cb) {
+    if (_fatal) return;
     if (_ready) { if (cb) cb(); return; }
     if (cb) _readyCbs.push(cb);
     if (_starting) return;
     _starting = true;
-    openDB(function (db) {
-      _db = db; idbOK = !!db;
-      idbLoadAll(function () {
-        if (idbOK) { try { migrateInlineSrcs(); } catch (e) { console.error(e); } }
-        _ready = true;
-        var cbs = _readyCbs.slice(); _readyCbs.length = 0;
-        cbs.forEach(function (f) { try { f(); } catch (e) { console.error(e); } });
-      });
+    init();
+  }
+  function fireReady() {
+    _ready = true;
+    var cbs = _readyCbs.slice(); _readyCbs.length = 0;
+    cbs.forEach(function (f) { try { f(); } catch (e) { console.error(e); } });
+  }
+
+  function init() {
+    if (!sb) { showFatal("Supabase isn’t configured. Check assets/js/supabase-config.js."); return; }
+    Promise.all([
+      sb.from("projects").select("*").order("created_at", { ascending: false }),
+      sb.from("images").select("*").order("project_id", { ascending: true }).order("sort_index", { ascending: true }),
+      sb.from("brand_assets").select("*").order("created_at", { ascending: false })
+    ]).then(function (r) {
+      chk(r[0]); chk(r[1]); chk(r[2]);
+      buildCache(r[0].data || [], r[1].data || [], r[2].data || []);
+      var pre = _projects.length ? Promise.resolve() : seedDemo();
+      return pre.then(downloadAllBytes);
+    }).then(function () {
+      fireReady();
+    }).catch(function (e) {
+      console.error(e);
+      showFatal(friendlyError(e));
     });
   }
 
-  // Attach cached src (+ derived thumbnail) to a metadata record for rendering.
-  // Returns shallow copies so callers can't accidentally persist base64 back
-  // into the localStorage blob.
+  function friendlyError(e) {
+    var msg = (e && (e.message || e.error_description || e.hint)) || "";
+    if (/relation .* does not exist|Could not find the table|schema cache/i.test(msg))
+      return "Connected, but the database tables are missing. Run SUPABASE_SETUP.sql in your Supabase SQL editor, then reload.";
+    if (/Failed to fetch|NetworkError|fetch/i.test(msg))
+      return "Couldn’t reach Supabase. Check your connection and that the project is running.";
+    return "Couldn’t load your data from Supabase. " + (msg || "");
+  }
+
+  function buildCache(projects, images, brand) {
+    var byProj = {};
+    _projects = projects.map(function (p) {
+      var cp = { id: p.id, name: p.name, description: p.description || "", createdAt: ms(p.created_at), updatedAt: ms(p.updated_at), thumbnail: null, images: [] };
+      byProj[p.id] = cp; return cp;
+    });
+    images.forEach(function (im) {
+      var cp = byProj[im.project_id]; if (!cp) return;
+      PATH[im.id] = im.storage_path || null;
+      cp.images.push({ id: im.id, filename: im.filename || "image", w: im.w || 0, h: im.h || 0, addedAt: ms(im.created_at), updatedAt: ms(im.updated_at), objects: im.objects || [] });
+    });
+    _brand = brand.map(function (a) {
+      PATH[a.id] = a.storage_path || null;
+      return { id: a.id, name: a.name || "Asset", w: a.w || 0, h: a.h || 0, addedAt: ms(a.created_at) };
+    });
+  }
+
+  function downloadAllBytes() {
+    var tasks = [];
+    _projects.forEach(function (p) { p.images.forEach(function (im) { if (PATH[im.id] && !IMG[im.id]) tasks.push(im.id); }); });
+    _brand.forEach(function (a) { if (PATH[a.id] && !IMG[a.id]) tasks.push(a.id); });
+    return runLimited(tasks, 5, function (id) {
+      return sb.storage.from(BUCKET).download(PATH[id]).then(function (res) {
+        if (res.error || !res.data) return;
+        return blobToDataUrl(res.data).then(function (d) { IMG[id] = d; });
+      }).catch(function () {});
+    });
+  }
+
+  function seedDemo() {
+    var defs = [
+      { name: "Drone Inspection — Bay 4", description: "Annotated reference shots from the Q2 sensor audit." },
+      { name: "Control Cabinet Layout", description: "Wiring & connector callouts for the field manual." }
+    ];
+    var now = Date.now();
+    var rows = defs.map(function (d, i) {
+      return { id: uid("prj"), name: d.name, description: d.description, created_at: iso(now - (defs.length - i)), updated_at: iso(now - (defs.length - i)) };
+    });
+    rows.forEach(function (r) { _projects.unshift({ id: r.id, name: r.name, description: r.description, createdAt: ms(r.created_at), updatedAt: ms(r.updated_at), thumbnail: null, images: [] }); });
+    return sb.from("projects").insert(rows).then(chk).catch(function (e) { console.error("Seed failed:", e); });
+  }
+
+  function showFatal(message) {
+    _fatal = true; _starting = false;
+    function paint() {
+      if (document.getElementById("sbFatal")) return;
+      var wrap = document.createElement("div");
+      wrap.id = "sbFatal";
+      wrap.setAttribute("style", "position:fixed;inset:0;z-index:99999;display:grid;place-items:center;padding:24px;background:#0B1220;color:#E5EDF5;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif");
+      wrap.innerHTML =
+        '<div style="max-width:440px;text-align:center">' +
+          '<div style="width:52px;height:52px;margin:0 auto 18px;border-radius:14px;display:grid;place-items:center;background:rgba(239,68,68,.14);color:#F87171;font-size:26px">⚠</div>' +
+          '<h2 style="margin:0 0 8px;font-size:20px;font-weight:700">Can’t reach the database</h2>' +
+          '<p style="margin:0 0 20px;font-size:14px;line-height:1.5;color:#9FB0C0">' + escapeHtml(message) + '</p>' +
+          '<button id="sbRetry" style="cursor:pointer;border:0;border-radius:10px;padding:10px 20px;font-size:14px;font-weight:600;color:#fff;background:#00AEEF">Retry</button>' +
+        '</div>';
+      document.body.appendChild(wrap);
+      document.getElementById("sbRetry").onclick = function () { location.reload(); };
+    }
+    if (document.body) paint(); else document.addEventListener("DOMContentLoaded", paint);
+  }
+  function escapeHtml(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  /* ---- hydrate: attach cached bytes for rendering ---- */
   function hydrate(p) {
     if (!p) return p;
     var q = {}; for (var k in p) q[k] = p[k];
     q.images = (p.images || []).map(function (im) {
       var o = {}; for (var k2 in im) o[k2] = im[k2];
-      o.src = IMG[im.id] || im.src || "";
+      o.src = IMG[im.id] || "";
       return o;
     });
     q.thumbnail = q.images.length ? (q.images[0].src || null) : null;
     return q;
   }
+  function findCache(id) { for (var i = 0; i < _projects.length; i++) if (_projects[i].id === id) return _projects[i]; return null; }
 
-  /* ---- session / auth ---- */
+  /* ---- session / auth (device-local) ---- */
   function getSession()   { return read(KEYS.session, null); }
   function setSession(s)  { write(KEYS.session, s); }
   function clearSession() { localStorage.removeItem(KEYS.session); }
   function isAuthed()     { var s = getSession(); return !!(s && s.user); }
 
-  /* ---- settings ---- */
+  /* ---- settings (device-local) ---- */
   var DEFAULT_SETTINGS = {
-    theme: "dark",
-    autosave: true,
-    autosaveInterval: 30,
-    snapToGrid: true,
-    gridSize: 20,
-    showGrid: false,
-    alignmentGuides: true,
-    defaultExport: "png",
-    fullName: "Skytek Operator",
-    email: "operator@skytek.com"
+    theme: "dark", autosave: true, autosaveInterval: 30, snapToGrid: true, gridSize: 20,
+    showGrid: false, alignmentGuides: true, defaultExport: "png",
+    fullName: "Skytek Operator", email: "operator@skytek.com"
   };
   function getSettings() {
-    var s = read(KEYS.settings, {});
-    var out = {};
+    var s = read(KEYS.settings, {}), out = {};
     for (var k in DEFAULT_SETTINGS) out[k] = (s[k] !== undefined ? s[k] : DEFAULT_SETTINGS[k]);
     return out;
   }
-  function setSettings(patch) {
-    var s = getSettings();
-    for (var k in patch) s[k] = patch[k];
-    write(KEYS.settings, s);
-    return s;
-  }
+  function setSettings(patch) { var s = getSettings(); for (var k in patch) s[k] = patch[k]; write(KEYS.settings, s); return s; }
 
-  /* ---- projects ----
-     Persisted (localStorage) image shape: { id, filename, w, h, addedAt,
-     updatedAt, objects:[...] } — NO src. Image bytes live in IMG/IndexedDB.
-     Reads go through hydrate() which re-attaches src for the UI. */
-  function getProjectsRaw() { return read(KEYS.projects, []); }
-  function getProjects() { return getProjectsRaw().map(hydrate); }
-
-  // Persist metadata only. When IndexedDB is available we strip any base64 so
-  // it can never bloat localStorage; without it we fall back to inline storage.
-  function saveProjects(list) {
-    if (idbOK) {
-      list = list.map(function (p) {
-        var q = {}; for (var k in p) q[k] = p[k];
-        q.thumbnail = null;
-        q.images = (p.images || []).map(function (im) {
-          var o = {}; for (var k2 in im) o[k2] = im[k2];
-          delete o.src;
-          return o;
-        });
-        return q;
-      });
-    }
-    return write(KEYS.projects, list);
-  }
-
-  function findRaw(id) {
-    var list = getProjectsRaw();
-    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
-    return null;
-  }
-  function getProject(id) { var p = findRaw(id); return p ? hydrate(p) : null; }
+  /* ============================================================
+     PROJECTS
+  ============================================================ */
+  function getProjects() { return _projects.map(hydrate); }
+  function getProject(id) { var p = findCache(id); return p ? hydrate(p) : null; }
 
   function createProject(data) {
-    var list = getProjectsRaw();
     var now = Date.now();
-    var p = {
-      id: uid("prj"),
-      name: (data && data.name) || "Untitled Project",
-      description: (data && data.description) || "",
-      thumbnail: null,
-      createdAt: now,
-      updatedAt: now,
-      images: []
-    };
-    list.unshift(p);
-    saveProjects(list);
-    return p;
+    var p = { id: uid("prj"), name: (data && data.name) || "Untitled Project", description: (data && data.description) || "", thumbnail: null, createdAt: now, updatedAt: now, images: [] };
+    _projects.unshift(p);
+    track(sb.from("projects").insert({ id: p.id, name: p.name, description: p.description, created_at: iso(now), updated_at: iso(now) }).then(chk));
+    return hydrate(p);
   }
   function updateProject(id, patch) {
-    var list = getProjectsRaw();
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].id === id) {
-        for (var k in patch) list[i][k] = patch[k];
-        list[i].updatedAt = Date.now();
-        saveProjects(list);
-        return hydrate(list[i]);
-      }
-    }
-    return null;
-  }
-  function duplicateProject(id) {
-    var list = getProjectsRaw();
-    var idx = -1, src = null;
-    for (var i = 0; i < list.length; i++) { if (list[i].id === id) { idx = i; src = list[i]; break; } }
-    if (!src) return null;
+    var p = findCache(id); if (!p) return null;
     var now = Date.now();
-    var copy = JSON.parse(JSON.stringify(src));
-    copy.id = uid("prj");
-    copy.name = src.name + " copy";
-    copy.createdAt = now;
-    copy.updatedAt = now;
-    copy.images = copy.images.map(function (im) {
-      var oldId = im.id;
-      im.id = uid("img");
-      im.addedAt = now;
-      im.updatedAt = now;
-      // clone the image bytes under the new id
-      var bytes = IMG[oldId];
-      if (bytes) { IMG[im.id] = bytes; idbPut(im.id, bytes); }
-      return im;
-    });
-    list.splice(idx + 1, 0, copy);
-    return saveProjects(list) ? hydrate(copy) : null;
+    for (var k in patch) p[k] = patch[k];
+    p.updatedAt = now;
+    var db = { updated_at: iso(now) };
+    if ("name" in patch) db.name = patch.name;
+    if ("description" in patch) db.description = patch.description;
+    track(sb.from("projects").update(db).eq("id", id).then(chk));
+    return hydrate(p);
   }
   function deleteProject(id) {
-    var p = findRaw(id);
-    if (p) (p.images || []).forEach(function (im) { delete IMG[im.id]; idbDelete(im.id); });
-    var list = getProjectsRaw().filter(function (x) { return x.id !== id; });
-    saveProjects(list);
+    var p = findCache(id); if (!p) return;
+    var paths = p.images.map(function (im) { return PATH[im.id]; });
+    p.images.forEach(function (im) { delete IMG[im.id]; delete PATH[im.id]; });
+    _projects = _projects.filter(function (x) { return x.id !== id; });
     if (read(KEYS.lastOpen, null) === id) localStorage.removeItem(KEYS.lastOpen);
+    track(removePaths(paths).then(function () { return sb.from("projects").delete().eq("id", id).then(chk); }));
+  }
+  function duplicateProject(id) {
+    var src = findCache(id); if (!src) return null;
+    var idx = _projects.indexOf(src), now = Date.now();
+    var copy = { id: uid("prj"), name: src.name + " copy", description: src.description, thumbnail: null, createdAt: now, updatedAt: now, images: [] };
+    var uploads = [];
+    src.images.forEach(function (im, i) {
+      var nid = uid("img");
+      copy.images.push({ id: nid, filename: im.filename, w: im.w, h: im.h, addedAt: now, updatedAt: now, objects: clone(im.objects) });
+      if (IMG[im.id]) {
+        var path = copy.id + "/" + nid + extFromDataUrl(IMG[im.id]);
+        IMG[nid] = IMG[im.id]; PATH[nid] = path;
+        uploads.push({ dataUrl: IMG[im.id], path: path, row: { id: nid, project_id: copy.id, filename: im.filename, w: im.w, h: im.h, objects: clone(im.objects), storage_path: path, sort_index: i, created_at: iso(now), updated_at: iso(now) } });
+      }
+    });
+    _projects.splice(idx + 1, 0, copy);
+    track((function () {
+      return sb.from("projects").insert({ id: copy.id, name: copy.name, description: copy.description, created_at: iso(now), updated_at: iso(now) }).then(chk)
+        .then(function () { return runLimited(uploads, 4, function (u) { return uploadDataUrl(u.dataUrl, u.path); }); })
+        .then(function () { return uploads.length ? sb.from("images").insert(uploads.map(function (u) { return u.row; })).then(chk) : null; });
+    })());
+    return hydrate(copy);
   }
 
-  /* ---- images within a project ---- */
+  /* ============================================================
+     IMAGES
+  ============================================================ */
   function addImage(projectId, img) {
-    var list = getProjectsRaw();
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].id === projectId) {
-        var now = Date.now();
-        var id = uid("img");
-        var rec = {
-          id: id,
-          filename: img.filename || "image",
-          w: img.w || 0,
-          h: img.h || 0,
-          addedAt: now,
-          updatedAt: now,
-          objects: []
-        };
-        // stash bytes in the image store (or inline as a last resort)
-        IMG[id] = img.src;
-        if (idbOK) idbPut(id, img.src); else rec.src = img.src;
-        list[i].images.unshift(rec);
-        list[i].updatedAt = now;
-        if (saveProjects(list)) {
-          var out = hydrate({ images: [rec] }).images[0];
-          return out;
-        }
-        // write failed — roll back the cache/DB entry
-        delete IMG[id]; if (idbOK) idbDelete(id);
-        return null;
-      }
-    }
-    return null;
+    var p = findCache(projectId); if (!p) return null;
+    var now = Date.now(), id = uid("img"), path = projectId + "/" + id + extFromDataUrl(img.src);
+    var rec = { id: id, filename: img.filename || "image", w: img.w || 0, h: img.h || 0, addedAt: now, updatedAt: now, objects: [] };
+    IMG[id] = img.src; PATH[id] = path;
+    p.images.unshift(rec); p.updatedAt = now;
+    track((function () {
+      return uploadDataUrl(img.src, path)
+        .then(function () { return sb.from("images").insert({ id: id, project_id: projectId, filename: rec.filename, w: rec.w, h: rec.h, objects: [], storage_path: path, sort_index: 0, created_at: iso(now), updated_at: iso(now) }).then(chk); })
+        .then(function () { return sb.from("projects").update({ updated_at: iso(now) }).eq("id", projectId).then(chk); })
+        .then(function () { return persistOrder(projectId); });
+    })());
+    return hydrate({ images: [rec] }).images[0];
   }
   function getImage(projectId, imageId) {
-    var p = getProject(projectId);
-    if (!p) return null;
+    var p = getProject(projectId); if (!p) return null;
     for (var i = 0; i < p.images.length; i++) if (p.images[i].id === imageId) return p.images[i];
     return null;
   }
+  function imgIndex(p, imageId) { for (var i = 0; i < p.images.length; i++) if (p.images[i].id === imageId) return i; return -1; }
+
   function updateImage(projectId, imageId, patch) {
-    var list = getProjectsRaw();
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].id === projectId) {
-        for (var j = 0; j < list[i].images.length; j++) {
-          if (list[i].images[j].id === imageId) {
-            var im = list[i].images[j];
-            for (var k in patch) {
-              if (k === "src") {
-                IMG[imageId] = patch.src;
-                if (idbOK) idbPut(imageId, patch.src); else im.src = patch.src;
-              } else {
-                im[k] = patch[k];
-              }
-            }
-            im.updatedAt = Date.now();
-            list[i].updatedAt = Date.now();
-            saveProjects(list);
-            return hydrate(list[i]).images[j];
-          }
-        }
-      }
+    var p = findCache(projectId); if (!p) return null;
+    var i = imgIndex(p, imageId); if (i < 0) return null;
+    var im = p.images[i], now = Date.now(), srcChanged = false;
+    for (var k in patch) {
+      if (k === "src") { IMG[imageId] = patch.src; srcChanged = true; }
+      else im[k] = patch[k];
     }
-    return null;
+    im.updatedAt = now; p.updatedAt = now;
+    var db = { updated_at: iso(now) };
+    ["filename", "w", "h", "objects"].forEach(function (kk) { if (kk in patch) db[kk] = patch[kk]; });
+    track((function () {
+      var pre = Promise.resolve();
+      if (srcChanged) {
+        var path = PATH[imageId] || (projectId + "/" + imageId + extFromDataUrl(patch.src));
+        PATH[imageId] = path; db.storage_path = path;
+        pre = uploadDataUrl(patch.src, path);
+      }
+      return pre
+        .then(function () { return sb.from("images").update(db).eq("id", imageId).then(chk); })
+        .then(function () { return sb.from("projects").update({ updated_at: iso(now) }).eq("id", projectId).then(chk); });
+    })());
+    return hydrate(p).images[i];
   }
   function deleteImage(projectId, imageId) {
-    var list = getProjectsRaw();
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].id === projectId) {
-        list[i].images = list[i].images.filter(function (im) { return im.id !== imageId; });
-        list[i].updatedAt = Date.now();
-        delete IMG[imageId]; idbDelete(imageId);
-        saveProjects(list);
-        return true;
-      }
-    }
-    return false;
+    var p = findCache(projectId); if (!p) return false;
+    var path = PATH[imageId];
+    p.images = p.images.filter(function (im) { return im.id !== imageId; });
+    p.updatedAt = Date.now();
+    delete IMG[imageId]; delete PATH[imageId];
+    track(removePaths([path]).then(function () { return sb.from("images").delete().eq("id", imageId).then(chk); }).then(function () { return persistOrder(projectId); }));
+    return true;
   }
   function duplicateImage(projectId, imageId) {
-    var list = getProjectsRaw();
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].id === projectId) {
-        var idx = list[i].images.findIndex(function (im) { return im.id === imageId; });
-        if (idx < 0) return null;
-        var src = list[i].images[idx];
-        var copy = JSON.parse(JSON.stringify(src));
-        copy.id = uid("img");
-        copy.filename = (src.filename || "image").replace(/(\.[^.]+)?$/, " copy$1");
-        copy.addedAt = copy.updatedAt = Date.now();
-        var bytes = IMG[imageId];
-        if (bytes) { IMG[copy.id] = bytes; if (idbOK) { idbPut(copy.id, bytes); delete copy.src; } else { copy.src = bytes; } }
-        list[i].images.splice(idx + 1, 0, copy);
-        saveProjects(list);
-        return hydrate({ images: [copy] }).images[0];
-      }
-    }
-    return null;
+    var p = findCache(projectId); if (!p) return null;
+    var idx = imgIndex(p, imageId); if (idx < 0) return null;
+    var src = p.images[idx], now = Date.now(), nid = uid("img");
+    var copy = { id: nid, filename: (src.filename || "image").replace(/(\.[^.]+)?$/, " copy$1"), w: src.w, h: src.h, addedAt: now, updatedAt: now, objects: clone(src.objects) };
+    var path = null;
+    if (IMG[imageId]) { path = projectId + "/" + nid + extFromDataUrl(IMG[imageId]); IMG[nid] = IMG[imageId]; PATH[nid] = path; }
+    p.images.splice(idx + 1, 0, copy); p.updatedAt = now;
+    track((function () {
+      var pre = path ? uploadDataUrl(IMG[nid], path) : Promise.resolve();
+      return pre
+        .then(function () { return sb.from("images").insert({ id: nid, project_id: projectId, filename: copy.filename, w: copy.w, h: copy.h, objects: copy.objects, storage_path: path, sort_index: idx + 1, created_at: iso(now), updated_at: iso(now) }).then(chk); })
+        .then(function () { return persistOrder(projectId); });
+    })());
+    return hydrate({ images: [copy] }).images[0];
   }
-  function saveImageObjects(projectId, imageId, objects) {
-    return updateImage(projectId, imageId, { objects: objects });
-  }
+  function saveImageObjects(projectId, imageId, objects) { return updateImage(projectId, imageId, { objects: objects }); }
+
   function reorderImages(projectId, orderedIds) {
-    var list = getProjectsRaw();
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].id === projectId) {
-        var byId = {};
-        list[i].images.forEach(function (im) { byId[im.id] = im; });
-        var next = [];
-        orderedIds.forEach(function (id) { if (byId[id]) { next.push(byId[id]); delete byId[id]; } });
-        list[i].images.forEach(function (im) { if (byId[im.id]) next.push(im); });
-        list[i].images = next;
-        list[i].updatedAt = Date.now();
-        return saveProjects(list);
-      }
-    }
-    return false;
+    var p = findCache(projectId); if (!p) return false;
+    var byId = {}; p.images.forEach(function (im) { byId[im.id] = im; });
+    var next = [];
+    orderedIds.forEach(function (id) { if (byId[id]) { next.push(byId[id]); delete byId[id]; } });
+    p.images.forEach(function (im) { if (byId[im.id]) next.push(im); });
+    p.images = next; p.updatedAt = Date.now();
+    track(persistOrder(projectId));
+    return true;
+  }
+  // Write each image's array position into its sort_index column.
+  function persistOrder(projectId) {
+    var p = findCache(projectId); if (!p) return Promise.resolve();
+    return runLimited(p.images.map(function (im, i) { return { id: im.id, i: i }; }), 6, function (t) {
+      return sb.from("images").update({ sort_index: t.i }).eq("id", t.id).then(chk);
+    });
   }
 
-  /* ---- recent images (global feed) ---- */
+  /* ============================================================
+     BRAND ASSETS (global)
+  ============================================================ */
+  function getBrandAssets() {
+    return _brand.map(function (a) { var o = {}; for (var k in a) o[k] = a[k]; o.src = IMG[a.id] || ""; return o; });
+  }
+  function addBrandAsset(img) {
+    var now = Date.now(), id = uid("brand"), path = "brand/" + id + extFromDataUrl(img.src);
+    var rec = { id: id, name: img.filename || "Asset", w: img.w || 0, h: img.h || 0, addedAt: now };
+    IMG[id] = img.src; PATH[id] = path;
+    _brand.unshift(rec);
+    track(uploadDataUrl(img.src, path).then(function () {
+      return sb.from("brand_assets").insert({ id: id, name: rec.name, w: rec.w, h: rec.h, storage_path: path, created_at: iso(now) }).then(chk);
+    }));
+    var out = {}; for (var k in rec) out[k] = rec[k]; out.src = img.src; return out;
+  }
+  function deleteBrandAsset(id) {
+    var path = PATH[id];
+    _brand = _brand.filter(function (a) { return a.id !== id; });
+    delete IMG[id]; delete PATH[id];
+    track(removePaths([path]).then(function () { return sb.from("brand_assets").delete().eq("id", id).then(chk); }));
+    return true;
+  }
+
+  /* ---- recent feed + last project (device-local) ---- */
   function pushRecent(entry) {
     var list = read(KEYS.recent, []);
     list = list.filter(function (r) { return !(r.projectId === entry.projectId && r.imageId === entry.imageId); });
     list.unshift({ projectId: entry.projectId, imageId: entry.imageId, filename: entry.filename, projectName: entry.projectName, at: Date.now() });
-    list = list.slice(0, 24);
-    write(KEYS.recent, list);
+    write(KEYS.recent, list.slice(0, 24));
   }
   function getRecent() {
-    var list = read(KEYS.recent, []);
-    return list.filter(function (r) { return !!findRaw(r.projectId) && (function () {
-      var p = findRaw(r.projectId);
-      return p.images.some(function (im) { return im.id === r.imageId; });
-    })(); });
+    return read(KEYS.recent, []).filter(function (r) {
+      var p = findCache(r.projectId);
+      return !!p && p.images.some(function (im) { return im.id === r.imageId; });
+    });
   }
-
-  /* ---- last opened project ---- */
   function setLastProject(id) { write(KEYS.lastOpen, id); }
   function getLastProject()  { return read(KEYS.lastOpen, null); }
 
   /* ---- stats ---- */
-  function totalImages() {
-    return getProjectsRaw().reduce(function (n, p) { return n + p.images.length; }, 0);
-  }
-  // True footprint = localStorage metadata + cached image bytes.
+  function totalImages() { return _projects.reduce(function (n, p) { return n + p.images.length; }, 0); }
   function storageUsedKB() {
-    var bytes = 0;
-    for (var k in KEYS) { var v = localStorage.getItem(KEYS[k]); if (v) bytes += v.length; }
-    for (var id in IMG) bytes += (IMG[id] || "").length;
+    var bytes = 0; for (var id in IMG) bytes += (IMG[id] || "").length;
     return Math.round(bytes / 1024);
   }
 
-  /* ---- brand assets (global, reusable logos/graphics) ----
-     Bytes live in the same IndexedDB image store (+ IMG cache); metadata in
-     localStorage. Available across all projects. */
-  function getBrandRaw() { return read(KEYS.brand, []); }
-  function saveBrand(list) {
-    if (idbOK) list = list.map(function (a) { var o = {}; for (var k in a) o[k] = a[k]; delete o.src; return o; });
-    return write(KEYS.brand, list);
-  }
-  function getBrandAssets() {
-    return getBrandRaw().map(function (a) {
-      var o = {}; for (var k in a) o[k] = a[k];
-      o.src = IMG[a.id] || a.src || "";
-      return o;
-    });
-  }
-  function addBrandAsset(img) {
-    var id = uid("brand");
-    IMG[id] = img.src;
-    if (idbOK) idbPut(id, img.src);
-    var rec = { id: id, name: img.filename || "Asset", w: img.w || 0, h: img.h || 0, addedAt: Date.now() };
-    if (!idbOK) rec.src = img.src;
-    var list = getBrandRaw(); list.unshift(rec);
-    if (saveBrand(list)) { var out = {}; for (var k in rec) out[k] = rec[k]; out.src = img.src; return out; }
-    delete IMG[id]; if (idbOK) idbDelete(id);
-    return null;
-  }
-  function deleteBrandAsset(id) {
-    var list = getBrandRaw().filter(function (a) { return a.id !== id; });
-    delete IMG[id]; idbDelete(id);
-    return saveBrand(list);
-  }
-
-  /* ---- seed demo data on first run ---- */
-  function seedIfEmpty() {
-    if (read(KEYS.projects, null) !== null) return;
-    createProject({ name: "Drone Inspection — Bay 4", description: "Annotated reference shots from the Q2 sensor audit." });
-    createProject({ name: "Control Cabinet Layout", description: "Wiring & connector callouts for the field manual." });
-  }
+  // seedIfEmpty is now handled during ready(); kept as a no-op for callers.
+  function seedIfEmpty() {}
 
   /* ---- clear everything (settings → danger zone) ---- */
-  function clearAll() {
+  function clearAll(cb) {
+    // wipe device-local prefs immediately
     for (var k in KEYS) localStorage.removeItem(KEYS[k]);
-    IMG = {};
-    if (_db) { try { _db.transaction(DB_STORE, "readwrite").objectStore(DB_STORE).clear(); } catch (e) {} }
+    var allPaths = [];
+    _projects.forEach(function (p) { p.images.forEach(function (im) { if (PATH[im.id]) allPaths.push(PATH[im.id]); }); });
+    _brand.forEach(function (a) { if (PATH[a.id]) allPaths.push(PATH[a.id]); });
+    _projects = []; _brand = []; IMG = {}; PATH = {};
+    if (!sb) { if (cb) cb(); return; }
+    Promise.resolve()
+      .then(function () { return removePaths(allPaths); })
+      .then(function () { return sb.from("images").delete().neq("id", "__none__"); })
+      .then(function () { return sb.from("projects").delete().neq("id", "__none__"); })
+      .then(function () { return sb.from("brand_assets").delete().neq("id", "__none__"); })
+      .then(function () { if (cb) cb(); }, function (e) { console.error(e); if (cb) cb(); });
   }
 
   window.Store = {
-    KEYS: KEYS, uid: uid, ready: ready, clearAll: clearAll,
+    KEYS: KEYS, uid: uid, ready: ready, flush: flush, clearAll: clearAll,
     getSession: getSession, setSession: setSession, clearSession: clearSession, isAuthed: isAuthed,
     getSettings: getSettings, setSettings: setSettings,
     getProjects: getProjects, getProject: getProject, createProject: createProject,

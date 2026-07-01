@@ -1862,7 +1862,7 @@
     var copy = Store.duplicateImage(projectId, imageId);
     if (copy) {
       UI.toast({ type: "success", title: "Saved as copy", desc: copy.filename });
-      setTimeout(function () { location.href = "editor.html?project=" + projectId + "&image=" + copy.id; }, 500);
+      Store.flush(function () { location.href = "editor.html?project=" + projectId + "&image=" + copy.id; });
     }
   }
   // autosave interval (per settings)
@@ -2241,7 +2241,7 @@
   function navigateToImage(id) {
     if (id === imageId) return;
     if (S.dirty) save(true);
-    location.href = "editor.html?project=" + projectId + "&image=" + id;
+    Store.flush(function () { location.href = "editor.html?project=" + projectId + "&image=" + id; });
   }
 
   function duplicateImageInRibbon(id) {
@@ -2269,9 +2269,9 @@
           var remaining = Store.getProject(projectId).images;
           if (remaining.length) {
             var next = remaining[Math.min(idx, remaining.length - 1)];
-            location.href = "editor.html?project=" + projectId + "&image=" + next.id;
+            Store.flush(function () { location.href = "editor.html?project=" + projectId + "&image=" + next.id; });
           } else {
-            location.href = "project.html?id=" + projectId;
+            Store.flush(function () { location.href = "project.html?id=" + projectId; });
           }
         } else {
           renderImageLibrary();
@@ -2334,7 +2334,7 @@
           if (added) UI.toast({ type: "success", title: added + " image(s) added" });
           if (added < files.length) UI.toast({ type: "danger", title: "Storage full", desc: "Some images couldn't be saved. Clear data in Settings." });
           renderImageLibrary();
-          if (!image && first) location.href = "editor.html?project=" + projectId + "&image=" + first.id;
+          if (!image && first) Store.flush(function () { location.href = "editor.html?project=" + projectId + "&image=" + first.id; });
         }
       });
     });
@@ -2346,7 +2346,7 @@
       Store.updateImage(projectId, targetId, { src: im.src, w: im.w, h: im.h, filename: im.filename });
       UI.toast({ type: "success", title: "Image replaced" });
       replaceTargetId = null;
-      if (targetId === imageId) setTimeout(function () { location.reload(); }, 400);
+      if (targetId === imageId) Store.flush(function () { location.reload(); });
       else renderImageLibrary();
     });
   });
