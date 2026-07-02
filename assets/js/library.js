@@ -54,6 +54,7 @@
     cursor:      '<path d="M3 3l7.5 18 2.1-7.4L20 11.5z"/>',
     gridDots:    '<circle cx="5" cy="5" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="19" cy="5" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="19" r="1"/><circle cx="12" cy="19" r="1"/><circle cx="19" cy="19" r="1"/>',
     download:    '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>',
+    crop:        '<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M2 6h14a2 2 0 0 1 2 2v14"/>',
     grip:        '<circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>',
     chevR:       '<path d="M9 6l6 6-6 6"/>',
     chevL:       '<path d="M15 6l-6 6 6 6"/>',
@@ -63,6 +64,8 @@
     alignL:      '<path d="M3 6h18M3 12h12M3 18h15"/>',
     alignC:      '<path d="M3 6h18M6 12h12M5 18h14"/>',
     alignR:      '<path d="M3 6h18M9 12h12M6 18h15"/>',
+    listUl:      '<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.3" fill="currentColor" stroke="none"/>',
+    listOl:      '<path d="M10 6h11M10 12h11M10 18h11"/><path d="M4 4.5h1V9M3.6 9h1.8"/><path d="M3.4 14.2a1 1 0 0 1 1.7.7c0 .5-.5.9-1 1.3l-.8.8h2"/>',
     /* stamp icons (used in library + as placeable objects) */
     bolt:        '<path d="M13 2L4 14h6l-1 8 9-12h-6z"/>',
     camera:      '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',

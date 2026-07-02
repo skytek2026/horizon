@@ -293,3 +293,104 @@
   .erail--left { display: none; }
   .erail--right { width: 240px; }
 }
+
+/* ============================================================
+   CROP MODE
+   ============================================================ */
+/* --z is the live stage scale; overlay chrome counter-scales so
+   borders/handles stay a constant on-screen size at any zoom. */
+#cropOverlay { position: absolute; inset: 0; z-index: 30; }
+.crop-mode #objLayer { pointer-events: none; }
+.crop-mode .stage-grid { opacity: 0; }
+
+.crop-shade {
+  position: absolute; background: rgba(6, 12, 22, 0.62);
+  pointer-events: none;
+}
+.crop-box {
+  position: absolute; box-sizing: border-box; cursor: move;
+  outline: calc(1px / var(--z, 1)) solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 calc(1px / var(--z, 1)) rgba(0, 0, 0, 0.4);
+}
+/* rule-of-thirds guides */
+.crop-thirds { position: absolute; inset: 0; pointer-events: none; }
+.crop-thirds i {
+  position: absolute; background: rgba(255, 255, 255, 0.3); display: block;
+}
+.crop-thirds i.v { top: 0; bottom: 0; width: calc(1px / var(--z, 1)); }
+.crop-thirds i.h { left: 0; right: 0; height: calc(1px / var(--z, 1)); }
+.crop-thirds i.v1 { left: 33.33%; }
+.crop-thirds i.v2 { left: 66.66%; }
+.crop-thirds i.h1 { top: 33.33%; }
+.crop-thirds i.h2 { top: 66.66%; }
+/* corner + edge handles, counter-scaled to stay ~12px on screen */
+.crop-h {
+  position: absolute; box-sizing: border-box;
+  width: calc(12px / var(--z, 1)); height: calc(12px / var(--z, 1));
+  background: #fff; border: calc(1px / var(--z, 1)) solid rgba(0,0,0,0.35);
+  border-radius: calc(2px / var(--z, 1));
+}
+.crop-nw { left: calc(-6px / var(--z, 1)); top: calc(-6px / var(--z, 1)); cursor: nwse-resize; }
+.crop-ne { right: calc(-6px / var(--z, 1)); top: calc(-6px / var(--z, 1)); cursor: nesw-resize; }
+.crop-se { right: calc(-6px / var(--z, 1)); bottom: calc(-6px / var(--z, 1)); cursor: nwse-resize; }
+.crop-sw { left: calc(-6px / var(--z, 1)); bottom: calc(-6px / var(--z, 1)); cursor: nesw-resize; }
+.crop-n { left: 50%; top: calc(-6px / var(--z, 1)); transform: translateX(-50%); cursor: ns-resize; }
+.crop-s { left: 50%; bottom: calc(-6px / var(--z, 1)); transform: translateX(-50%); cursor: ns-resize; }
+.crop-w { top: 50%; left: calc(-6px / var(--z, 1)); transform: translateY(-50%); cursor: ew-resize; }
+.crop-e { top: 50%; right: calc(-6px / var(--z, 1)); transform: translateY(-50%); cursor: ew-resize; }
+/* hide edge handles when an aspect ratio is locked */
+#cropOverlay.locked .crop-n, #cropOverlay.locked .crop-s,
+#cropOverlay.locked .crop-w, #cropOverlay.locked .crop-e { display: none; }
+.crop-dims {
+  position: absolute; left: 50%; top: calc(-11px / var(--z, 1));
+  transform: translate(-50%, -100%);
+  font: 600 calc(12px / var(--z, 1)) / 1 var(--font-mono, ui-monospace, monospace);
+  color: #fff; background: rgba(6, 12, 22, 0.85);
+  padding: calc(3px / var(--z, 1)) calc(7px / var(--z, 1));
+  border-radius: calc(4px / var(--z, 1)); white-space: nowrap; pointer-events: none;
+}
+
+/* floating action bar */
+#cropBar {
+  position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+  z-index: 40; display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--border);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+}
+#cropBar .crop-bar-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--text-muted); padding: 0 4px;
+}
+#cropBar .crop-ratios { display: flex; align-items: center; gap: 2px; padding: 0 4px; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+#cropBar .crop-ratio {
+  border: none; background: transparent; color: var(--text-muted);
+  font-size: 12px; font-weight: 600; padding: 6px 9px; border-radius: 7px; cursor: pointer;
+}
+#cropBar .crop-ratio:hover { background: var(--hover, rgba(255,255,255,0.06)); color: var(--text); }
+#cropBar .crop-ratio.on { background: var(--brand, #00AEEF); color: #fff; }
+
+/* ============================================================
+   RICH TEXT (textbox body)
+   ============================================================ */
+.tbx-body p { margin: 0 0 0.5em; }
+.tbx-body p:last-child { margin-bottom: 0; }
+.tbx-body ul, .tbx-body ol { margin: 0.2em 0; padding-left: 1.5em; }
+.tbx-body li { margin: 0 0 0.2em; }
+.tbx-body li:last-child { margin-bottom: 0; }
+.tbx-body:focus { outline: none; }
+
+#rtToolbar {
+  position: fixed; z-index: 60; display: flex; align-items: center; gap: 2px;
+  padding: 5px 6px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--border);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+#rtToolbar button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border: none; border-radius: 7px;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+}
+#rtToolbar button:hover { background: var(--hover, rgba(255,255,255,0.07)); color: var(--text); }
+#rtToolbar button.on { background: var(--brand, #00AEEF); color: #fff; }
+#rtToolbar .rt-sep { width: 1px; height: 20px; background: var(--border); margin: 0 3px; }
