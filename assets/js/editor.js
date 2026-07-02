@@ -77,11 +77,11 @@
     };
     if (kind === "label") {
       o.type = "label"; o.text = opts.text || "Label";
-      o.fontSize = fs; o.h = Math.round(fs * 2.2);
+      o.font = "Exo"; o.fontSize = 14; o.h = Math.round(o.fontSize * 2.2);
       o.captionStyle = "solid";
       if (opts.iconSide) { o.iconSide = opts.iconSide; o.iconKey = opts.iconKey || "Star"; }
-      var iconExtra = o.iconSide ? Math.round(fs * 1.5) : 0;
-      o.w = Math.max(80, Math.round(o.text.length * fs * 0.62) + 36 + iconExtra);
+      var iconExtra = o.iconSide ? Math.round(o.fontSize * 1.5) : 0;
+      o.w = Math.max(80, Math.round(o.text.length * o.fontSize * 0.62) + 36 + iconExtra);
     } else if (kind === "caption") {
       o.type = "caption"; o.text = opts.text || "Caption";
       o.fontSize = Math.round(fs * 0.92); o.fontWeight = 500;
@@ -105,11 +105,12 @@
       // A caption pre-filled with the current date, styled like a technical timestamp.
       o.type = "caption"; o.text = opts.text || formatStamp(); o.isStamp = true;
       o.font = "JetBrains Mono"; o.fontWeight = 700;
-      o.fontSize = Math.round(fs * 0.82);
-      o.color = "#F59E0B"; o.bg = "transparent"; o.borderWidth = 0;
-      o.captionStyle = "transparent"; o.shadow = true; o.align = "center";
-      o.h = Math.round(o.fontSize * 1.9);
-      o.w = Math.max(150, Math.round(o.text.length * o.fontSize * 0.66) + 24);
+      o.fontSize = 14;
+      o.color = "#ffffff"; o.bg = "#0B1220"; o.bgOpacity = 0.85; o.borderWidth = 0;
+      o.captionStyle = "rounded"; o.shadow = true; o.align = "center";
+      o.iconSide = "left"; o.iconKey = "clock";
+      o.h = Math.round(o.fontSize * 2.2);
+      o.w = Math.max(150, Math.round(o.text.length * o.fontSize * 0.66) + 24 + Math.round(o.fontSize * 1.8));
     } else if (kind === "titlebar") {
       // A draggable banner with logo, title, subtitle and styled background/border.
       o.type = "titlebar"; o.text = "";
@@ -119,7 +120,9 @@
       o.color = "#ffffff";                         // text colour
       o.bg = "#0B1220"; o.bgOpacity = 0.85;        // background colour + opacity
       o.borderColor = "#00AEEF"; o.borderOpacity = 1; o.borderWidth = 0;
-      o.radius = 10; o.font = "Inter";
+      o.radius = 0; o.font = "Inter";
+      o.titleSize = 24; o.subSize = 14;
+      o.titleFont = "Exo"; o.subtitleFont = "Inter";
       var iw = image ? image.w : 800;
       o.w = clamp(Math.round(iw * 0.6), 280, iw);
       o.h = clamp(Math.round(iw * 0.12), 64, 200);
@@ -159,12 +162,12 @@
       o.title = "Title"; o.subtitle = "Subtitle"; o.body = "Body text goes here.";
       o.titleShow = true; o.subtitleShow = true; o.bodyShow = true;
       o.titleColor = "#ffffff"; o.subtitleColor = "#9fb3c8"; o.bodyColor = "#e5e7eb";
-      o.titleSize = Math.round(fs * 1.5); o.subtitleSize = Math.round(fs * 1.05); o.bodySize = Math.round(fs * 0.95);
+      o.titleSize = 24; o.subtitleSize = 16; o.bodySize = 14;
       o.titleWeight = 700; o.subtitleWeight = 600; o.bodyWeight = 400;
       o.titleItalic = false; o.subtitleItalic = false; o.bodyItalic = false;
-      o.titleFont = "Inter"; o.subtitleFont = "Inter"; o.bodyFont = "Inter";
+      o.titleFont = "Exo"; o.subtitleFont = "Inter"; o.bodyFont = "Inter";
       o.align = "left"; o.font = "Inter";
-      o.bg = "transparent"; o.bgOpacity = 1; o.borderColor = "#00AEEF"; o.borderOpacity = 1; o.borderWidth = 0; o.radius = 8;
+      o.bg = "#000000"; o.bgOpacity = 0.7; o.borderColor = "#ffffff"; o.borderOpacity = 1; o.borderWidth = 2; o.radius = 10; o.dropShadow = true;
       var iwt = image ? image.w : 800;
       o.w = clamp(Math.round(iwt * 0.34), 160, 900);
       o.h = Math.round(o.titleSize * 1.35 + o.subtitleSize * 1.5 + o.bodySize * 2.6 + fs * 1.2);
@@ -180,10 +183,10 @@
       o.showValue = true;         // show the "(value)" suffix
       o.dotShape = "circle";      // "circle" | "square"
       o.dotSize = Math.round(fs * 0.85);
-      o.labelColor = "#ffffff"; o.labelSize = Math.round(fs * 0.95); o.labelWeight = 600;
-      o.font = "Inter";
-      o.bg = "#1B2432"; o.bgOpacity = 0.92;
-      o.borderColor = "#00AEEF"; o.borderOpacity = 1; o.borderWidth = 0;
+      o.labelColor = "#ffffff"; o.labelSize = 16; o.labelWeight = 400;
+      o.font = "Exo";
+      o.bg = "#000000"; o.bgOpacity = 0.7;
+      o.borderColor = "#ffffff"; o.borderOpacity = 1; o.borderWidth = 2;
       o.radius = 24; o.itemGap = 20; o.padX = 18; o.padY = 10;
       fitLegend(o);
     }
@@ -447,7 +450,8 @@
     var pad = Math.round((o.bodySize || 14) * 0.9);
     return "width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:" + ai +
       ";gap:" + Math.round((o.bodySize || 14) * 0.35) + "px;padding:" + pad + "px;overflow:hidden;" +
-      "background:" + hexRgba(o.bg, o.bgOpacity == null ? 1 : o.bgOpacity) + ";border:" + bd + ";border-radius:" + o.radius + "px;";
+      "background:" + hexRgba(o.bg, o.bgOpacity == null ? 1 : o.bgOpacity) + ";border:" + bd + ";border-radius:" + o.radius + "px;" +
+      (o.dropShadow ? "box-shadow:0 " + Math.round(o.h * 0.14 + 3) + "px " + Math.round(o.h * 0.34 + 8) + "px rgba(0,0,0,0.45);" : "");
   }
   function tbxInnerHTML(o) {
     return TBX_FIELDS.map(function (f) {
@@ -521,8 +525,8 @@
       ? '<img src="' + o.logo + '" draggable="false" style="width:' + m.logoSize + 'px;height:' + m.logoSize + 'px;object-fit:contain;flex:0 0 auto;border-radius:' + Math.round(m.logoSize * 0.16) + 'px">'
       : '<div style="width:' + m.logoSize + 'px;height:' + m.logoSize + 'px;flex:0 0 auto;border-radius:' + Math.round(m.logoSize * 0.22) + 'px;background:linear-gradient(140deg,#00AEEF,#0066a8);display:flex;align-items:center;justify-content:center;color:#fff">' + Icons.svg("tag", { size: Math.round(m.logoSize * 0.58), stroke: "#fff" }) + "</div>");
     return '<div class="tb-text" style="min-width:0;flex:1 1 auto">' +
-        '<div class="tb-title" style="color:' + o.color + ";font-family:'" + o.font + "';font-weight:700;font-size:" + m.titleSize + 'px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + UI.escapeHtml(o.title) + "</div>" +
-        (o.subtitle ? '<div class="tb-sub" style="color:' + o.color + ";font-family:'" + o.font + "';font-weight:500;font-size:" + m.subSize + 'px;line-height:1.2;margin-top:2px;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + UI.escapeHtml(o.subtitle) + "</div>" : "") +
+        '<div class="tb-title" style="color:' + o.color + ";font-family:'" + (o.titleFont || o.font) + "';font-weight:700;font-size:" + m.titleSize + 'px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + UI.escapeHtml(o.title) + "</div>" +
+        (o.subtitle ? '<div class="tb-sub" style="color:' + o.color + ";font-family:'" + (o.subtitleFont || o.font) + "';font-weight:500;font-size:" + m.subSize + 'px;line-height:1.2;margin-top:2px;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + UI.escapeHtml(o.subtitle) + "</div>" : "") +
       "</div>" + logo;
   }
   function shapeSVG(o) {
@@ -764,8 +768,10 @@
         '<div class="prop-row"><label>Subtitle</label><div class="ctrl"><input class="input" data-prop="subtitle" value="' + UI.escapeHtml(o.subtitle) + '"></div></div>' +
         numRow("Title size", "titleSize", o.titleSize || tbMetrics(o).titleSize, 8, 200) +
         numRow("Subtitle size", "subSize", o.subSize || tbMetrics(o).subSize, 8, 200) +
-        '<div class="prop-row"><label>Font</label><div class="ctrl"><select class="select" data-prop="font">' +
-          FONTS.map(function (f) { return '<option value="' + f + '"' + (o.font === f ? " selected" : "") + ">" + f + "</option>"; }).join("") + "</select></div></div></div>";
+        '<div class="prop-row"><label>Title font</label><div class="ctrl"><select class="select" data-prop="titleFont">' +
+          FONTS.map(function (f) { return '<option value="' + f + '"' + ((o.titleFont || o.font) === f ? " selected" : "") + ">" + f + "</option>"; }).join("") + "</select></div></div>" +
+        '<div class="prop-row"><label>Subtitle font</label><div class="ctrl"><select class="select" data-prop="subtitleFont">' +
+          FONTS.map(function (f) { return '<option value="' + f + '"' + ((o.subtitleFont || o.font) === f ? " selected" : "") + ">" + f + "</option>"; }).join("") + "</select></div></div></div>";
       // Logo
       html += '<div class="prop-group"><h4>Logo</h4>' +
         '<div class="prop-row"><label>Show logo</label><div class="ctrl seg2">' +
@@ -800,7 +806,10 @@
         (tbxHasBg ? colorRow("bg", o.bg) + sliderRow("Opacity", "bgOpacity", Math.round((o.bgOpacity == null ? 1 : o.bgOpacity) * 100), 0, 100, "%") : "") +
         numRow("Radius", "radius", o.radius, 0, 80) +
         numRow("Border", "borderWidth", o.borderWidth, 0, 20) +
-        (o.borderWidth ? colorRow("borderColor", o.borderColor) + strokeStyleRow(o) : "") + "</div>";
+        (o.borderWidth ? colorRow("borderColor", o.borderColor) + strokeStyleRow(o) : "") +
+        '<div class="prop-row"><label>Drop shadow</label><div class="ctrl seg2">' +
+          '<button data-toggle="dropShadow" class="' + (o.dropShadow ? "on" : "") + '" title="Drop shadow">' + Icons.svg("layers", { size: 15 }) + (o.dropShadow ? " On" : " Off") + "</button>" +
+        "</div></div></div>";
     } else if (o.type === "legend") {
       var legBg = o.bg && o.bg !== "transparent";
       // Layout
@@ -2125,7 +2134,9 @@
   // Render a textbox (Title / Subtitle / Body) onto the export canvas.
   function drawTextbox(ctx, o, x, y) {
     var r = Math.min(o.radius, o.w / 2, o.h / 2);
+    if (o.dropShadow) { ctx.save(); ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = Math.round(o.h * 0.34 + 8); ctx.shadowOffsetY = Math.round(o.h * 0.14 + 3); }
     if (o.bg && o.bg !== "transparent") { ctx.fillStyle = hexRgba(o.bg, o.bgOpacity == null ? 1 : o.bgOpacity); roundRect(ctx, x, y, o.w, o.h, r); ctx.fill(); }
+    if (o.dropShadow) ctx.restore();
     if (o.borderWidth) { ctx.strokeStyle = hexRgba(o.borderColor, o.borderOpacity); ctx.lineWidth = o.borderWidth; applyCanvasDash(ctx, o, o.borderWidth); roundRect(ctx, x, y, o.w, o.h, r); ctx.stroke(); ctx.setLineDash([]); }
     var pad = Math.round((o.bodySize || 14) * 0.9);
     var gap = Math.round((o.bodySize || 14) * 0.35);
@@ -2244,16 +2255,16 @@
       var cyc = y + o.h / 2;
       if (o.subtitle) {
         ctx.textBaseline = "bottom";
-        ctx.font = "700 " + m.titleSize + "px '" + o.font + "', sans-serif";
+        ctx.font = "700 " + m.titleSize + "px '" + (o.titleFont || o.font) + "', sans-serif";
         ctx.fillText(o.title, tx, cyc - 1);
         var a = ctx.globalAlpha; ctx.globalAlpha = a * 0.72;
         ctx.textBaseline = "top";
-        ctx.font = "500 " + m.subSize + "px '" + o.font + "', sans-serif";
+        ctx.font = "500 " + m.subSize + "px '" + (o.subtitleFont || o.font) + "', sans-serif";
         ctx.fillText(o.subtitle, tx, cyc + 3);
         ctx.globalAlpha = a;
       } else {
         ctx.textBaseline = "middle";
-        ctx.font = "700 " + m.titleSize + "px '" + o.font + "', sans-serif";
+        ctx.font = "700 " + m.titleSize + "px '" + (o.titleFont || o.font) + "', sans-serif";
         ctx.fillText(o.title, tx, cyc);
       }
       ctx.restore();
