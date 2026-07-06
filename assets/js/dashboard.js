@@ -49,12 +49,39 @@
   }
 
   /* ---- project cards ---- */
+  function skeletonCard() {
+    return '<div class="card project-card is-skeleton" aria-hidden="true">' +
+      '<div class="pc-thumb"><div class="skel skel-thumb" style="position:absolute;inset:0"></div></div>' +
+      '<div class="pc-body">' +
+        '<div class="skel skel-line" style="height:15px;width:62%"></div>' +
+        '<div class="skel skel-line" style="height:12px;width:100%;margin-top:4px"></div>' +
+        '<div class="skel skel-line" style="height:12px;width:80%"></div>' +
+        '<div class="skel skel-line" style="height:11px;width:45%;margin-top:6px"></div>' +
+      '</div>' +
+      '<div class="pc-foot skel-foot">' +
+        '<div class="skel"></div><div class="skel" style="flex:0 0 30px"></div>' +
+        '<div class="skel" style="flex:0 0 30px"></div><div class="skel" style="flex:0 0 30px"></div>' +
+      '</div></div>';
+  }
+  function renderSkeletons(n) {
+    grid.style.display = "grid";
+    var cards = ""; for (var i = 0; i < (n || 6); i++) cards += skeletonCard();
+    grid.innerHTML = cards;
+    document.getElementById("projCount").textContent = "Loading\u2026";
+  }
+  var COUNT_HINT_KEY = "skytek.dash.projCount";
+  function lastKnownCount() {
+    var n = parseInt(localStorage.getItem(COUNT_HINT_KEY), 10);
+    return (isFinite(n) && n > 0) ? Math.min(n, 8) : 6;
+  }
+
   function renderProjects() {
     var projects = Store.getProjects().filter(function (p) {
       return !query || (p.name + " " + p.description).toLowerCase().indexOf(query) > -1;
     });
     document.getElementById("projCount").textContent =
       projects.length + (projects.length === 1 ? " project" : " projects");
+    try { localStorage.setItem(COUNT_HINT_KEY, String(Store.getProjects().length)); } catch (e) {}
 
     if (!projects.length) {
       grid.style.display = "block";
@@ -216,6 +243,7 @@
     "Welcome back, " + (Store.getSettings().fullName || "Operator").split(" ")[0];
 
   function renderAll() { renderStats(); renderProjects(); UI.updateSidebarCounts(); UI.hydrateIcons(); }
+  renderSkeletons(lastKnownCount());
   Store.ready(function () { renderAll(); renderTemplates(); UI.hydrateIcons(); });
 
   // honor #anchor on load

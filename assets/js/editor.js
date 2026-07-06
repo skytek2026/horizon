@@ -128,8 +128,8 @@
       o.h = clamp(Math.round(iw * 0.12), 64, 200);
     } else if (kind === "arrow") {
       o.type = "arrow"; o.shapeKind = opts.shapeKind; o.text = "";
-      o.bg = "transparent"; o.color = "#EF4444"; o.borderColor = "#EF4444"; o.borderWidth = 4;
-      o.arrowHead = "triangle";
+      o.bg = "transparent"; o.color = "#FFFFFF"; o.borderColor = "#FFFFFF"; o.borderWidth = 2;
+      o.arrowHead = "open"; o.dropShadow = false;
       o.w = clamp(Math.round((image ? image.w : 800) * 0.2), 100, 360);
       o.h = clamp(Math.round((image ? image.w : 800) * 0.1), 50, 160);
     } else if (kind === "photo") {
@@ -341,7 +341,7 @@
     } else if (o.type === "photo") {
       inner = '<div class="obj-content" style="' + photoContentStyle(o) + '"><img src="' + o.src + '" draggable="false" style="width:100%;height:100%;object-fit:cover;display:block"></div>';
     } else {
-      var shStyle = (o.type === "shape" || o.type === "polygon") ? shapeShadowCss(o) : "";
+      var shStyle = (o.type === "shape" || o.type === "polygon" || o.type === "arrow") ? shapeShadowCss(o) : "";
       if (o.type === "arrow" && (o.flipX || o.flipY)) shStyle += "transform:scale(" + (o.flipX ? -1 : 1) + "," + (o.flipY ? -1 : 1) + ");";
       inner = '<div class="obj-content"' + (shStyle ? ' style="' + shStyle + '"' : "") + ">" + objContentHTML(o) + "</div>";
     }
@@ -684,7 +684,7 @@
     return 0; // open / none
   }
   function arrowSVG(o) {
-    var w = o.w, h = o.h, c = o.color, sw = Math.max(3, o.borderWidth || 4);
+    var w = o.w, h = o.h, c = o.color, sw = Math.max(2, o.borderWidth || 2);
     var cy = h / 2, head = Math.min(h * 0.95, (18 + sw * 2) * ((o.headScale || 100) / 100));
     var ht = o.arrowHead || "triangle";
     var ret = headRetract(ht, head);
@@ -801,7 +801,7 @@
   }
 
   var FONTS = ["Inter", "Exo", "JetBrains Mono", "Georgia", "Arial", "Courier New"];
-  var SWATCHES = ["#ffffff", "#0B1220", "#00AEEF", "#22C55E", "#F59E0B", "#EF4444", "#A855F7", "#111827"];
+  var SWATCHES = ["#ffffff", "#0B1220", "#00AEEF", "#22C55E", "#F59E0B", "#EF4444", "#A855F7", "#111827", "#032036", "#58AEDE", "#1C83C6"];
 
   function renderProps() {
     var o = getSel();
@@ -1040,6 +1040,9 @@
           '<div class="prop-row"><label>Flip</label><div class="ctrl seg2">' +
             '<button data-arrowflip="h" class="' + (o.flipX ? "on" : "") + '">Horizontal</button>' +
             '<button data-arrowflip="v" class="' + (o.flipY ? "on" : "") + '">Vertical</button>' +
+          "</div></div>" +
+          '<div class="prop-row"><label>Drop shadow</label><div class="ctrl seg2">' +
+            '<button data-toggle="dropShadow" class="' + (o.dropShadow ? "on" : "") + '" title="Drop shadow">' + Icons.svg("layers", { size: 15 }) + (o.dropShadow ? " On" : " Off") + "</button>" +
           "</div></div>" : (o.borderWidth ? strokeStyleRow(o) : "")) +
         "</div>";
     }
@@ -1807,7 +1810,7 @@
       else if (o.type === "textbox") { content.setAttribute("style", tbxContentStyle(o)); content.innerHTML = tbxInnerHTML(o); return; }
       else if (o.type === "legend") { content.setAttribute("style", legendContentStyle(o)); content.innerHTML = legendInnerHTML(o); return; }
       else if (o.type === "photo") { content.setAttribute("style", photoContentStyle(o)); return; }
-      else if (o.type === "shape" || o.type === "polygon") content.style.filter = o.dropShadow ? shapeShadowCss(o).replace(/^filter:|;$/g, "") : "";
+      else if (o.type === "shape" || o.type === "polygon" || o.type === "arrow") content.style.filter = o.dropShadow ? shapeShadowCss(o).replace(/^filter:|;$/g, "") : "";
       content.innerHTML = objContentHTML(o);
     }
   }
@@ -2491,7 +2494,7 @@
         : '<svg xmlns="http://www.w3.org/2000/svg" width="' + o.w + '" height="' + o.h + '">' + (o.type === "shape" ? shapeInner(o) : (o.type === "polygon" ? polygonInner(o) : (o.type === "polyline" ? polylineInner(o) : arrowInner(o)))) + "</svg>";
       var img = new Image();
       img.onload = function () {
-        if ((o.type === "shape" || o.type === "polygon") && o.dropShadow) { var sp = shadowParams(o); ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = sp.blur; ctx.shadowOffsetY = sp.dy; }
+        if ((o.type === "shape" || o.type === "polygon" || o.type === "arrow") && o.dropShadow) { var sp = shadowParams(o); ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = sp.blur; ctx.shadowOffsetY = sp.dy; }
         if (o.type === "arrow" && (o.flipX || o.flipY)) {
           var cxf = x + o.w / 2, cyf = y + o.h / 2;
           ctx.translate(cxf, cyf); ctx.scale(o.flipX ? -1 : 1, o.flipY ? -1 : 1); ctx.translate(-cxf, -cyf);
