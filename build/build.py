@@ -117,7 +117,7 @@ out = f"""<!DOCTYPE html>
 </body>
 </html>
 """
-o = ROOT / "dist" / "index.html"
+o = ROOT / "index.html"
 o.write_text(out, encoding="utf-8")
 print(len(out), "bytes")
 for bad in ["location.href", "supabase", "unpkg", "window.claude.complete", "localStorage" ]:

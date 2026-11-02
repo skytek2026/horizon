@@ -156,6 +156,26 @@
       });
   }
 
+  // Opened outside Claude (e.g. GitHub Pages): no storage runtime, so show a
+  // branded screen that sends visitors to the live app instead of a broken login.
+  var APP_URL = "https://claude.ai/artifact/DKohnKBXEncEVg1PwbkAX6";
+  function showStandalone() {
+    document.title = "Horizon Caption Studio";
+    document.body.className = "";
+    document.body.innerHTML =
+      '<div style="min-height:100vh;display:grid;place-items:center;padding:32px 20px;background:radial-gradient(1200px 600px at 70% -10%,rgba(0,174,239,.18),transparent),#0B1220;color:#E5EDF5;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif">' +
+        '<div style="max-width:520px;text-align:center">' +
+          '<div style="width:64px;height:64px;margin:0 auto 22px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(135deg,#00AEEF,#1C83C6);box-shadow:0 12px 32px rgba(0,174,239,.35)">' +
+            '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5" fill="#fff"/></svg></div>' +
+          '<h1 style="margin:0;font-family:Exo,Inter,sans-serif;font-size:34px;font-weight:700;letter-spacing:-.01em">Horizon Caption Studio</h1>' +
+          '<div style="margin:6px 0 22px;font-size:12px;font-weight:700;letter-spacing:.18em;color:#00AEEF">POWERED BY SKYTEK</div>' +
+          '<p style="margin:0 0 28px;font-size:16px;line-height:1.6;color:#9FB0C0">Annotate satellite imagery with callouts, markers, tracks and map furniture. The studio runs inside Claude, where your projects and images are stored.</p>' +
+          '<a href="' + APP_URL + '" style="display:inline-flex;align-items:center;gap:10px;padding:13px 24px;border-radius:12px;background:#00AEEF;color:#fff;font-size:15px;font-weight:600;text-decoration:none;box-shadow:0 8px 24px rgba(0,174,239,.3)">Open Horizon Caption Studio' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>' +
+          '<p style="margin:22px 0 0;font-size:13px;color:#6B7D90">You’ll need a claude.ai account with access to the studio.</p>' +
+        '</div></div>';
+  }
+
   window.App = {
     search: "", hash: "",
     go: go,
@@ -163,7 +183,8 @@
     complete: complete,
     hasAI: function () { return !!sampleCap; },
     start: function () {
-      if (typeof claude !== "undefined" && claude.use) claude.use("sample").then(function (s) { sampleCap = s; });
+      if (typeof claude === "undefined" || !claude.use) { showStandalone(); return; }
+      claude.use("sample").then(function (s) { sampleCap = s; });
       var r = fromToken(location.hash);
       if (!r) r = { page: "login", search: "", frag: "" };
       mount(r, false);
