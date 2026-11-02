@@ -1741,7 +1741,8 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
      always match and keep the page's web fonts.
   ============================================================ */
   var Kit = (function () {
-    var TYPES = { callout: 1, ring: 1, scalebar: 1, track: 1 };
+    var TYPES = { callout: 1, ring: 1, scalebar: 1, track: 1, shiptag: 1, distance: 1, aoi: 1, poipin: 1, zonelabel: 1, placelabel: 1, stamp2: 1, maplegend: 1, footer: 1 };
+    var AUTOSIZE = { shiptag: 1, poipin: 1, zonelabel: 1, placelabel: 1, stamp2: 1, maplegend: 1 };
     var NAVY = "#0B1A2E", MUTED = "#8FA3B8";
     function has(t) { return !!TYPES[t]; }
     function iw() { return image ? image.w : 1200; }
@@ -1782,8 +1783,8 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
       });
       return out;
     }
-    function T(x, y, s, size, weight, font, fill, anchor, ls) {
-      return { t: "text", x: x, y: y, s: s, size: Math.round(size), weight: weight, font: font, fill: fill, anchor: anchor || "start", ls: ls || 0 };
+    function T(x, y, s, size, weight, font, fill, anchor, ls, outline) {
+      return { t: "text", x: x, y: y, s: s, size: Math.round(size), weight: weight, font: font, fill: fill, anchor: anchor || "start", ls: ls || 0, outline: outline || null };
     }
     // Rotate a local point of o (box top-left origin) into image coordinates.
     function toImg(o, lx, ly, h) {
@@ -2004,12 +2005,214 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
       return prims;
     }
 
+
+    /* ============================ MORE MAP COMPONENTS ============================ */
+    function leaderEnd(o, h, col, f, endKind) {
+      var g = calloutLeader(o, h), lw = Math.max(1.5, f * 0.14), out = [], seg = [[g.sx, g.sy], [g.ex, g.ey]];
+      out.push({ t: "path", d: pLine(seg), stroke: "#000", strokeOp: 0.35, sw: lw + 2, cap: "round" });
+      out.push({ t: "path", d: pLine(seg), stroke: col, sw: lw, cap: "round" });
+      if (endKind === "ring") {
+        var rr = f * 0.8;
+        out.push({ t: "path", d: pCircle(g.ex, g.ey, rr), stroke: "#000", strokeOp: 0.35, sw: lw * 1.4 + 2 });
+        out.push({ t: "path", d: pCircle(g.ex, g.ey, rr), stroke: col, sw: lw * 1.4, fill: col, fillOp: 0.1 });
+      } else if (endKind === "dot") out.push({ t: "path", d: pCircle(g.ex, g.ey, f * 0.36), fill: col });
+      return out;
+    }
+
+    // 05 — AIS ship tag: label with accent bar + leader to a ring
+    function shiptagLayout(o) {
+      var f = o.f, ts = f * 1.25, bar = Math.max(3, Math.round(f * 0.3)), px = Math.round(f * 0.8), th = Math.round(f * 2.4);
+      var w = Math.round(bar + px * 2 + textW(o.label || " ", 600, Math.round(ts), "Inter")), h = th, rad = Math.round(f * 0.25);
+      var prims = [];
+      if (o.leaderShow !== false) prims = prims.concat(leaderEnd({ w: w, leaderAngle: o.leaderAngle, leaderLen: o.leaderLen }, h, o.accent, f, o.leaderEnd || "ring"));
+      prims.push({ t: "path", d: pRect(0, 0, w, h, rad), fill: o.bg || NAVY, fillOp: o.bgOpacity == null ? 0.92 : o.bgOpacity,
+                   shadow: { blur: Math.round(f * 0.8), dy: Math.round(f * 0.25), op: 0.35 } });
+      prims.push({ t: "path", d: pRect(0, 0, bar, h, [rad, 0, 0, rad]), fill: o.accent });
+      prims.push(T(bar + px, h / 2, o.label || "", ts, 600, "Inter", "#ffffff"));
+      return { w: w, h: h, prims: prims };
+    }
+
+    // 09 — distance line: dashed line with a centred pill label (rotate the object to aim it)
+    function distancePrims(o) {
+      var f = o.f, w = o.w, ph = Math.round(f * 2.2), cy = ph / 2, col = o.color || "#ffffff", lw = Math.max(2, f * 0.18), prims = [];
+      var seg = [[0, cy], [w, cy]], dash = [r1(f * 0.9), r1(f * 0.6)];
+      prims.push({ t: "path", d: pLine(seg), stroke: "#000", strokeOp: 0.35, sw: lw + 2, dash: dash });
+      prims.push({ t: "path", d: pLine(seg), stroke: col, sw: lw, dash: dash });
+      [0, w].forEach(function (x) {
+        if (o.ends === "dot") prims.push({ t: "path", d: pCircle(x, cy, f * 0.32), fill: col, stroke: "#000", strokeOp: 0.35, sw: 1 });
+        else if (o.ends === "tick") prims.push({ t: "path", d: pLine([[x, cy - f * 0.7], [x, cy + f * 0.7]]), stroke: col, sw: lw, cap: "round" });
+      });
+      if (o.label) {
+        var ts = Math.round(f * 1.15), pw = textW(o.label, 700, ts, "Inter") + f * 1.6;
+        prims.push({ t: "path", d: pRect(w / 2 - pw / 2, 0, pw, ph, ph / 2), fill: o.pillBg || "#ffffff",
+                     shadow: { blur: Math.round(f * 0.6), dy: Math.round(f * 0.15), op: 0.35 } });
+        prims.push(T(w / 2, cy, o.label, ts, 700, "Inter", o.pillText || NAVY, "middle"));
+      }
+      return prims;
+    }
+
+    // 13 — AOI box: dashed rectangle with a tab label above its top-left corner
+    function aoiPrims(o) {
+      var f = o.f, col = o.color || "#ffffff", lw = Math.max(1.5, f * 0.16), prims = [];
+      var dash = o.dashed === false ? null : [r1(f * 0.9), r1(f * 0.55)];
+      var box = pRect(lw / 2, lw / 2, Math.max(1, o.w - lw), Math.max(1, o.h - lw), Math.round(f * 0.3));
+      if (o.fill) prims.push({ t: "path", d: box, fill: col, fillOp: o.fill });
+      prims.push({ t: "path", d: box, stroke: "#000", strokeOp: 0.3, sw: lw + 2, dash: dash });
+      prims.push({ t: "path", d: box, stroke: col, sw: lw, dash: dash });
+      if (o.label) {
+        var ts = Math.round(f * 0.85), ls = f * 0.2, tw = textW(o.label, 700, ts, "Inter", ls) + f * 1.6, tabH = Math.round(f * 1.9);
+        var ty = -tabH - Math.round(f * 0.4);
+        prims.push({ t: "path", d: pRect(0, ty, tw, tabH, Math.round(f * 0.25)), fill: col });
+        prims.push(T(f * 0.8, ty + tabH / 2, o.label, ts, 700, "Inter", o.labelText || NAVY, "start", ls));
+      }
+      return prims;
+    }
+
+    // 03 — POI pin: teardrop map pin + name/coordinates card
+    function poipinLayout(o) {
+      var f = o.f, ph = Math.round(f * 3), pw = Math.round(ph * 0.72), r = pw / 2, d = ph - r;
+      var uy = r / d, ux = Math.sqrt(Math.max(0, 1 - uy * uy));
+      var P1 = [pw / 2 + r * ux, r + r * uy], P2 = [pw / 2 - r * ux, r + r * uy];
+      var pin = "M" + r1(pw / 2) + " " + ph + "L" + r1(P1[0]) + " " + r1(P1[1]) + "A" + r1(r) + " " + r1(r) + " 0 1 0 " + r1(P2[0]) + " " + r1(P2[1]) + "Z";
+      var prims = [{ t: "path", d: pin, fill: o.accent, stroke: "#ffffff", strokeOp: 0.9, sw: Math.max(1, f * 0.12),
+                     shadow: { blur: Math.round(f * 0.7), dy: Math.round(f * 0.25), op: 0.4 } },
+                   { t: "path", d: pCircle(pw / 2, r, r * 0.38), fill: "#ffffff" }];
+      var w = pw, h = ph;
+      if (o.card !== false && (o.title || o.subtitle)) {
+        var x0 = pw + Math.round(f * 0.7), tS = Math.round(f * 1.25), sS = Math.round(f * 0.82), padC = f;
+        var cw = Math.max(o.title ? textW(o.title, 600, tS, "Inter") : 0, o.subtitle ? textW(o.subtitle, 400, sS, "JetBrains Mono") : 0) + padC * 2;
+        var lines = (o.title ? 1 : 0) + (o.subtitle ? 1 : 0), chh = Math.round(f * (lines === 2 ? 3.4 : 2.3)), top = Math.round(ph * 0.45);
+        prims.push({ t: "path", d: pRect(x0, top, cw, chh, Math.round(f * 0.35)), fill: o.bg || NAVY, fillOp: o.bgOpacity == null ? 0.92 : o.bgOpacity,
+                     stroke: "#ffffff", strokeOp: 0.08, sw: 1, shadow: { blur: Math.round(f * 1.0), dy: Math.round(f * 0.3), op: 0.35 } });
+        var yy = top + (lines === 2 ? f * 1.15 : chh / 2);
+        if (o.title) { prims.push(T(x0 + padC, yy, o.title, tS, 600, "Inter", "#ffffff")); yy += f * 1.2; }
+        if (o.subtitle) prims.push(T(x0 + padC, lines === 2 ? yy : chh / 2 + top, o.subtitle, sS, 400, "JetBrains Mono", "#AFC0D0"));
+        w = Math.round(x0 + cw); h = Math.max(ph, top + chh);
+      }
+      return { w: w, h: h, prims: prims };
+    }
+
+    // 04 — zone label: kicker + name + ID badge
+    function zoneLayout(o) {
+      var f = o.f, pad = Math.round(f * 1.0), kS = Math.round(f * 0.78), nS = Math.round(f * 1.35), bS = Math.round(f * 0.85), ls = f * 0.2;
+      var colW = Math.max(o.kicker ? textW(o.kicker, 700, kS, "Inter", ls) : 0, textW(o.name || " ", 700, nS, "Inter"));
+      var bw = o.badge ? textW(o.badge, 700, bS, "JetBrains Mono") + f * 1.1 : 0, bh = Math.round(f * 1.7), gap = o.badge ? Math.round(f * 0.9) : 0;
+      var h = Math.round(pad * 2 + (o.kicker ? f * 1.25 : 0) + f * 1.55), w = Math.round(pad * 2 + colW + gap + bw);
+      var prims = [{ t: "path", d: pRect(0, 0, w, h, Math.round(f * 0.5)), fill: o.bg || NAVY, fillOp: o.bgOpacity == null ? 0.92 : o.bgOpacity,
+                     stroke: "#ffffff", strokeOp: 0.08, sw: 1, shadow: { blur: Math.round(f * 1.0), dy: Math.round(f * 0.3), op: 0.35 } }];
+      var y = pad;
+      if (o.kicker) { prims.push(T(pad, y + f * 0.55, o.kicker, kS, 700, "Inter", o.kickerColor || "#9CD8FF", "start", ls)); y += f * 1.25; }
+      prims.push(T(pad, y + f * 0.78, o.name || "", nS, 700, "Inter", "#ffffff"));
+      if (o.badge) {
+        var bx = pad + colW + gap, by = (h - bh) / 2;
+        prims.push({ t: "path", d: pRect(bx, by, bw, bh, Math.round(f * 0.3)), fill: o.accent });
+        prims.push(T(bx + bw / 2, by + bh / 2, o.badge, bS, 700, "JetBrains Mono", "#ffffff", "middle"));
+      }
+      return { w: w, h: h, prims: prims };
+    }
+
+    // 02 — place label: big outlined map text + small spaced second line
+    function placeLayout(o) {
+      var f = o.f, s1 = Math.round(f * 2.4), s2 = Math.round(f * 1.1), ls1 = f * 0.05, ls2 = f * 0.3;
+      var ow1 = Math.max(2, f * 0.32), ow2 = Math.max(1.5, f * 0.24), oc = o.outline || NAVY, col = o.color || "#ffffff";
+      var w1 = textW(o.name || " ", 800, s1, "Exo", ls1), w2 = o.sub ? textW(o.sub, 700, s2, "Inter", ls2) : 0;
+      var w = Math.round(Math.max(w1, w2) + ow1 * 2 + 4), h = Math.round(s1 * 1.2 + (o.sub ? s2 * 1.5 : 0) + ow1);
+      var ax = o.align === "left" ? ow1 : w / 2, an = o.align === "left" ? "start" : "middle";
+      var prims = [T(ax, ow1 / 2 + s1 * 0.6, o.name || "", s1, 800, "Exo", col, an, ls1, { color: oc, w: ow1 })];
+      if (o.sub) prims.push(T(ax, ow1 / 2 + s1 * 1.2 + s2 * 0.7, o.sub, s2, 700, "Inter", col, an, ls2, { color: oc, w: ow2 }));
+      return { w: w, h: h, prims: prims };
+    }
+
+    // 01 — two-part timestamp panel
+    function utcStamp() {
+      var d = new Date(), m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()];
+      var p = function (n) { return (n < 10 ? "0" : "") + n; };
+      return d.getUTCDate() + " " + m + " " + d.getUTCFullYear() + " · " + p(d.getUTCHours()) + ":" + p(d.getUTCMinutes()) + " UTC";
+    }
+    function stampLayout(o) {
+      var f = o.f, pad = Math.round(f * 1.1), gap = Math.round(f * 1.1), kS = Math.round(f * 0.8), vS = Math.round(f * 1.5), ls = f * 0.22;
+      var kw = o.kicker ? textW(o.kicker, 600, kS, "Inter", ls) : 0, vw = textW(o.value || " ", 600, vS, "Inter");
+      var h = Math.round(f * 3.3), w = Math.round(pad * 2 + vw + (o.kicker ? kw + gap * 2 + 1 : 0));
+      var prims = [{ t: "path", d: pRect(0, 0, w, h, Math.round(f * 0.5)), fill: o.bg || NAVY, fillOp: o.bgOpacity == null ? 0.92 : o.bgOpacity,
+                     stroke: "#ffffff", strokeOp: 0.08, sw: 1, shadow: { blur: Math.round(f * 1.0), dy: Math.round(f * 0.3), op: 0.35 } }];
+      var x = pad;
+      if (o.kicker) {
+        prims.push(T(x, h / 2, o.kicker, kS, 600, "Inter", MUTED, "start", ls)); x += kw + gap;
+        prims.push({ t: "path", d: pLine([[x, h * 0.26], [x, h * 0.74]]), stroke: "#ffffff", strokeOp: 0.2, sw: 1 }); x += 1 + gap;
+      }
+      prims.push(T(x, h / 2, o.value || "", vS, 600, "Inter", "#ffffff"));
+      return { w: w, h: h, prims: prims };
+    }
+
+    // 16 — map legend with symbol rows
+    var LEGEND_SYMS = [["ring", "Ring"], ["ringdot", "Ring + dot"], ["target", "Target"], ["line", "Line"], ["dashline", "Dashed line"], ["dashbox", "Dashed box"], ["dot", "Dot"], ["square", "Square"]];
+    function legendSym(sym, cx, cy, col, f) {
+      var sw = Math.max(1.5, f * 0.17), r = f * 0.55, out = [];
+      if (sym === "ring" || sym === "ringdot" || sym === "target") {
+        out.push({ t: "path", d: pCircle(cx, cy, r), stroke: col, sw: sw });
+        if (sym === "ringdot") out.push({ t: "path", d: pCircle(cx, cy, r * 0.4), fill: col });
+        if (sym === "target") [[1, 0], [0, 1], [-1, 0], [0, -1]].forEach(function (u) {
+          out.push({ t: "path", d: pLine([[cx + u[0] * r * 0.45, cy + u[1] * r * 0.45], [cx + u[0] * r * 1.3, cy + u[1] * r * 1.3]]), stroke: col, sw: sw * 0.8 });
+        });
+      } else if (sym === "line" || sym === "dashline") {
+        out.push({ t: "path", d: pLine([[cx - f * 0.7, cy], [cx + f * 0.7, cy]]), stroke: col, sw: Math.max(2, f * 0.2), dash: sym === "dashline" ? [r1(f * 0.3), r1(f * 0.2)] : null });
+      } else if (sym === "dashbox") {
+        out.push({ t: "path", d: pRect(cx - f * 0.6, cy - f * 0.6, f * 1.2, f * 1.2, 1), stroke: col, sw: Math.max(1.2, f * 0.12), dash: [r1(f * 0.22), r1(f * 0.16)] });
+      } else if (sym === "square") {
+        out.push({ t: "path", d: pRect(cx - f * 0.45, cy - f * 0.45, f * 0.9, f * 0.9, Math.round(f * 0.12)), fill: col });
+      } else {
+        out.push({ t: "path", d: pCircle(cx, cy, f * 0.45), fill: col });
+      }
+      return out;
+    }
+    function legendLayout(o) {
+      var f = o.f, pad = Math.round(f * 1.1), rowH = Math.round(f * 2.05), lS = Math.round(f * 1.0), tS = Math.round(f * 0.8), ls = f * 0.22;
+      var items = o.items || [], labW = 0;
+      items.forEach(function (it) { labW = Math.max(labW, textW(it.label || " ", 500, lS, "Inter")); });
+      if (o.title) labW = Math.max(labW - f * 2.1, textW(o.title, 700, tS, "Inter", ls) - f * 2.1, labW);
+      var w = Math.round(pad * 2 + f * 2.1 + labW), titleH = o.title ? Math.round(f * 1.9) : 0;
+      var h = Math.round(pad + titleH + items.length * rowH + pad * 0.6);
+      var prims = [{ t: "path", d: pRect(0, 0, w, h, Math.round(f * 0.6)), fill: o.bg || NAVY, fillOp: o.bgOpacity == null ? 0.9 : o.bgOpacity,
+                     stroke: "#ffffff", strokeOp: 0.08, sw: 1, shadow: { blur: Math.round(f * 1.2), dy: Math.round(f * 0.35), op: 0.35 } }];
+      if (o.title) prims.push(T(pad, pad + f * 0.55, o.title, tS, 700, "Inter", MUTED, "start", ls));
+      items.forEach(function (it, i) {
+        var cy = pad + titleH + i * rowH + rowH / 2;
+        prims = prims.concat(legendSym(it.sym, pad + f * 0.7, cy, it.color || "#ffffff", f));
+        prims.push(T(pad + f * 2.1, cy, it.label || "", lS, 500, "Inter", "#ffffff"));
+      });
+      return { w: w, h: h, prims: prims };
+    }
+
+    // 17 — footer strap: full-width band, top rule, title + subtitle, optional logo
+    function footerPrims(o) {
+      var f = o.f, w = o.w, h = Math.round(f * 3.6), rule = Math.max(2, Math.round(f * 0.16)), pad = Math.round(f * 1.6), cy = rule + (h - rule) / 2;
+      var prims = [{ t: "path", d: pRect(0, 0, w, h, 0), fill: o.bg || NAVY, fillOp: o.bgOpacity == null ? 0.96 : o.bgOpacity },
+                   { t: "path", d: pRect(0, 0, w, rule, 0), fill: o.accent }];
+      var tS = Math.round(f * 1.75), sS = Math.round(f * 1.45), x = pad;
+      if (o.title) { prims.push(T(x, cy, o.title, tS, 800, "Exo", "#ffffff")); x += textW(o.title, 800, tS, "Exo") + f * 0.9; }
+      if (o.subtitle) prims.push(T(x, cy, o.subtitle, sS, 400, "Inter", "#C9D6E3"));
+      if (o.logo) {
+        var lh = Math.round((h - rule) * 0.62), lw = Math.round(lh * ((o.logoW || 1) / (o.logoH || 1)));
+        prims.push({ t: "image", x: w - pad - lw, y: cy - lh / 2, w: lw, h: lh, src: o.logo, natW: o.logoW, natH: o.logoH, contain: true });
+      }
+      return prims;
+    }
+
     /* ============================ RENDERERS ============================ */
     function build(o) {
       if (o.type === "callout") return calloutPrims(o);
       if (o.type === "ring") return ringPrims(o);
       if (o.type === "scalebar") return scalePrims(o);
       if (o.type === "track") return trackPrims(o);
+      if (o.type === "shiptag") return shiptagLayout(o).prims;
+      if (o.type === "distance") return distancePrims(o);
+      if (o.type === "aoi") return aoiPrims(o);
+      if (o.type === "poipin") return poipinLayout(o).prims;
+      if (o.type === "zonelabel") return zoneLayout(o).prims;
+      if (o.type === "placelabel") return placeLayout(o).prims;
+      if (o.type === "stamp2") return stampLayout(o).prims;
+      if (o.type === "maplegend") return legendLayout(o).prims;
+      if (o.type === "footer") return footerPrims(o);
       return [];
     }
     var sid = 0, fontsHooked = false;
@@ -2039,14 +2242,15 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
         } else if (p.t === "text") {
           body += '<text x="' + r1(p.x) + '" y="' + r1(p.y) + '" text-anchor="' + p.anchor + '" dominant-baseline="central" fill="' + p.fill +
             '" style="font-family:\'' + p.font + '\',sans-serif;font-size:' + p.size + "px;font-weight:" + p.weight + ";" +
-            (p.ls ? "letter-spacing:" + r1(p.ls) + "px;" : "") + 'white-space:pre">' + esc(p.s) + "</text>";
+            (p.ls ? "letter-spacing:" + r1(p.ls) + "px;" : "") + (p.outline ? "paint-order:stroke;stroke:" + p.outline.color + ";stroke-width:" + r1(p.outline.w * 2) + "px;stroke-linejoin:round;" : "") +
+            'white-space:pre">' + esc(p.s) + "</text>";
         } else if (p.t === "image" && p.src) {
           if (p.crop) {
             body += '<svg x="' + r1(p.x) + '" y="' + r1(p.y) + '" width="' + r1(p.w) + '" height="' + r1(p.h) + '" viewBox="' +
               [p.crop.sx, p.crop.sy, p.crop.sw, p.crop.sh].map(r1).join(" ") + '" preserveAspectRatio="none"><image href="' + esc(p.src) +
               '" x="0" y="0" width="' + p.natW + '" height="' + p.natH + '" preserveAspectRatio="none"/></svg>';
           } else {
-            body += '<image href="' + esc(p.src) + '" x="' + r1(p.x) + '" y="' + r1(p.y) + '" width="' + r1(p.w) + '" height="' + r1(p.h) + '" preserveAspectRatio="xMidYMid slice"/>';
+            body += '<image href="' + esc(p.src) + '" x="' + r1(p.x) + '" y="' + r1(p.y) + '" width="' + r1(p.w) + '" height="' + r1(p.h) + '" preserveAspectRatio="xMidYMid ' + (p.contain ? "meet" : "slice") + '"/>';
           }
         }
       });
@@ -2083,6 +2287,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
             ctx.fillStyle = p.fill; ctx.textBaseline = "middle";
             ctx.textAlign = p.anchor === "middle" ? "center" : (p.anchor === "end" ? "right" : "left");
             if ("letterSpacing" in ctx) ctx.letterSpacing = (p.ls || 0) + "px";
+            if (p.outline) { ctx.strokeStyle = p.outline.color; ctx.lineWidth = p.outline.w * 2; ctx.lineJoin = "round"; ctx.strokeText(p.s, p.x, p.y); }
             ctx.fillText(p.s, p.x, p.y); ctx.restore();
           } else if (p.t === "image" && p._img) {
             var im = p._img;
@@ -2091,8 +2296,13 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
               ctx.drawImage(im, p.crop.sx * k, p.crop.sy * k, p.crop.sw * k, p.crop.sh * k, p.x, p.y, p.w, p.h);
             } else {
               var ir = im.naturalWidth / im.naturalHeight, dr = p.w / p.h, sw = im.naturalWidth, sh = im.naturalHeight, sx = 0, sy = 0;
-              if (ir > dr) { sw = sh * dr; sx = (im.naturalWidth - sw) / 2; } else { sh = sw / dr; sy = (im.naturalHeight - sh) / 2; }
-              ctx.drawImage(im, sx, sy, sw, sh, p.x, p.y, p.w, p.h);
+              if (p.contain) {
+                var dw = p.w, dh = p.h; if (ir > dr) dh = dw / ir; else dw = dh * ir;
+                ctx.drawImage(im, p.x + (p.w - dw) / 2, p.y + (p.h - dh) / 2, dw, dh);
+              } else {
+                if (ir > dr) { sw = sh * dr; sx = (im.naturalWidth - sw) / 2; } else { sh = sw / dr; sy = (im.naturalHeight - sh) / 2; }
+                ctx.drawImage(im, sx, sy, sw, sh, p.x, p.y, p.w, p.h);
+              }
             }
           }
         });
@@ -2133,19 +2343,72 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
         o.chevrons = true; o.numbers = true; o.showTimes = true; o.pinStart = false;
         o.times = trackPins(o).map(function (_, i) { return SAMPLE_TIMES[i] || ""; });
         if (!opts.points) { o.w = Math.round(iw() * 0.25); o.h = Math.round(iw() * 0.18); }
+      } else if (kind === "shiptag") {
+        var f1 = unit(0.0075, 12);
+        o.type = "shiptag"; o.f = f1; o.label = "VESSEL NAME"; o.accent = variant === "noais" ? "#F59E0B" : "#22C55E"; o.variant = variant || "match";
+        o.leaderShow = true; o.leaderAngle = 15; o.leaderLen = Math.round(f1 * 5); o.leaderEnd = "ring"; o.bgOpacity = 0.92;
+      } else if (kind === "distance") {
+        var f2 = unit(0.0075, 12);
+        o.type = "distance"; o.f = f2; o.label = "00 km"; o.color = "#ffffff"; o.ends = "none"; o.w = Math.round(iw() * 0.22);
+      } else if (kind === "aoi") {
+        var f3 = unit(0.0068, 11);
+        o.type = "aoi"; o.f = f3; o.label = "AREA OF INTEREST"; o.color = "#ffffff"; o.dashed = true; o.fill = 0;
+        o.w = Math.round(iw() * 0.16); o.h = Math.round(iw() * 0.12);
+      } else if (kind === "poipin") {
+        var f4 = unit(0.0075, 12);
+        o.type = "poipin"; o.f = f4; o.accent = "#2F9BFF"; o.title = "Port of Sulina"; o.subtitle = "45°09′25″ N  029°40′20″ E"; o.card = true; o.bgOpacity = 0.92;
+      } else if (kind === "zonelabel") {
+        var f5 = unit(0.0075, 12);
+        o.type = "zonelabel"; o.f = f5; o.kicker = "LISTED AREA"; o.name = "Zone name"; o.badge = "JWLA-000"; o.accent = "#2F80ED"; o.kickerColor = "#9CD8FF"; o.bgOpacity = 0.92;
+      } else if (kind === "placelabel") {
+        var f6 = unit(0.0085, 12);
+        o.type = "placelabel"; o.f = f6; o.name = "SULINA"; o.sub = "ROMANIA"; o.color = "#ffffff"; o.outline = NAVY; o.align = "center";
+      } else if (kind === "stamp2") {
+        var f7 = unit(0.0075, 12);
+        o.type = "stamp2"; o.f = f7; o.kicker = "OPTICAL ACQUISITION"; o.value = utcStamp(); o.bgOpacity = 0.92;
+      } else if (kind === "maplegend") {
+        var f8 = unit(0.0075, 12);
+        o.type = "maplegend"; o.f = f8; o.title = "LEGEND"; o.bgOpacity = 0.9;
+        o.items = [{ sym: "ring", color: "#22C55E", label: "AIS and imagery match" }, { sym: "ring", color: "#F59E0B", label: "Detection with no AIS" },
+                   { sym: "ringdot", color: "#E5323E", label: "Point of interest" }, { sym: "line", color: "#E5323E", label: "AIS track" },
+                   { sym: "dashbox", color: "#ffffff", label: "Area of interest" }];
+      } else if (kind === "footer") {
+        var f9 = unit(0.0095, 12);
+        o.type = "footer"; o.f = f9; o.title = "VESSEL NAME"; o.subtitle = "Imagery type detection · Black Sea"; o.accent = "#E5323E";
+        o.bgOpacity = 0.96; o.logo = null; o.w = iw();
       }
       fit(o);
     }
-    function autoH(o) { return o.type === "callout" || o.type === "scalebar"; }
+    function autoH(o) { return o.type === "callout" || o.type === "scalebar" || o.type === "distance" || o.type === "footer"; }
+    function autoSize(o) { return !!AUTOSIZE[o.type]; }
+    function sizeOf(o) {
+      if (o.type === "shiptag") return shiptagLayout(o);
+      if (o.type === "poipin") return poipinLayout(o);
+      if (o.type === "zonelabel") return zoneLayout(o);
+      if (o.type === "placelabel") return placeLayout(o);
+      if (o.type === "stamp2") return stampLayout(o);
+      if (o.type === "maplegend") return legendLayout(o);
+      return null;
+    }
     function heightFor(o) {
       if (o.type === "callout") return calloutLayout(o).h;
       if (o.type === "scalebar") return scaleLayout(o).h;
+      if (o.type === "distance") return Math.round(o.f * 2.2);
+      if (o.type === "footer") return Math.round(o.f * 3.6);
       return o.h;
+    }
+    // default placement for new objects that belong at an edge
+    function place(o, atImage) {
+      if (!image) return;
+      if (o.type === "footer") { o.x = 0; o.w = image.w; fit(o); o.y = (atImage && atImage.y < image.h / 2) ? 0 : image.h - o.h; }
+      if (o.type === "stamp2" && !atImage) { var m = Math.round(o.f * 1.5); o.x = image.w - o.w - m; o.y = m; }
     }
     function fit(o) {
       if (o.type === "scalebar") o.w = Math.max(o.w, Math.round(o.f * (o.showNorth ? 9 : 6.5)));
       if (o.type === "callout") o.w = Math.max(o.w, Math.round(o.f * 9));
+      if (o.type === "distance") o.w = Math.max(o.w, Math.round(o.f * 6));
       if (autoH(o)) o.h = heightFor(o);
+      var sz = sizeOf(o); if (sz) { o.w = Math.max(4, Math.round(sz.w)); o.h = Math.max(4, Math.round(sz.h)); }
       if (o.type === "ring") { var s = Math.max(8, Math.round(Math.max(o.w, o.h))); o.w = s; o.h = s; }
       if (o.type === "track") {
         var need = trackPins(o).length;
@@ -2153,12 +2416,22 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
         while (o.times.length < need) o.times.push("");
       }
     }
-    function icon(o) { return { callout: "info", ring: "target", scalebar: "gps", track: "edit" }[o.type] || "tag"; }
+    function icon(o) { return { callout: "info", ring: "target", scalebar: "gps", track: "edit", shiptag: "tag", distance: "dblArrow", aoi: "shapes",
+      poipin: "pin", zonelabel: "layout", placelabel: "text", stamp2: "clock", maplegend: "gridDots", footer: "layout" }[o.type] || "tag"; }
     function label(o) {
       if (o.type === "callout") return o.title || o.header || "Callout";
       if (o.type === "ring") return { match: "AIS match ring", noais: "No-AIS ring", poi: "Point of interest", target: "Target marker" }[o.variant] || "Marker";
       if (o.type === "scalebar") return "Scale bar";
       if (o.type === "track") return "Track · " + trackPins(o).length + " pins";
+      if (o.type === "shiptag") return o.label || "Ship tag";
+      if (o.type === "distance") return "Distance · " + (o.label || "");
+      if (o.type === "aoi") return o.label || "AOI box";
+      if (o.type === "poipin") return o.title || "POI pin";
+      if (o.type === "zonelabel") return o.name || "Zone label";
+      if (o.type === "placelabel") return o.name || "Place label";
+      if (o.type === "stamp2") return o.value || "Timestamp";
+      if (o.type === "maplegend") return "Legend";
+      if (o.type === "footer") return o.title || "Footer";
       return "Object";
     }
 
@@ -2168,14 +2441,25 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
         return '<div class="lib-item" draggable="true" data-kind="kit" data-variant="' + variant + '"><span class="li-icon" style="color:' + color + '">' +
           Icons.svg(icon, { size: 16 }) + "</span>" + name + '<span class="li-add">' + Icons.svg("plus", { size: 14 }) + "</span></div>";
       }
-      return '<div class="lib-hint">Callouts, markers and map furniture for satellite imagery.</div><div class="lib-list">' +
+      function sub(t) { return '<div style="font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3,#7f8ea3);margin:12px 4px 6px">' + t + "</div>"; }
+      return '<div class="lib-hint">Callouts, markers and map furniture for satellite imagery.</div><div class="lib-list">' + sub("Callouts") +
         row("alert", "Alert Callout", "callout:alert", "#E09A16") +
         row("info", "Event Callout", "callout:event", "#2F80ED") +
-        row("image", "Zoom Inset Callout", "callout:zoom", "#E5323E") +
+        row("image", "Zoom Inset Callout", "callout:zoom", "#E5323E") + sub("Markers") +
         row("target", "AIS Match Ring", "ring:match", "#22C55E") +
         row("target", "No-AIS Ring", "ring:noais", "#F59E0B") +
         row("pin", "Point of Interest", "ring:poi", "#E5323E") +
         row("target", "Target Marker", "ring:target", "#E5323E") +
+        row("tag", "AIS Ship Tag", "shiptag:match", "#22C55E") +
+        row("tag", "No-AIS Ship Tag", "shiptag:noais", "#F59E0B") +
+        row("pin", "POI Pin", "poipin", "#2F9BFF") + sub("Labels") +
+        row("layout", "Zone Label", "zonelabel", "#2F80ED") +
+        row("text", "Place Label", "placelabel", "#ffffff") +
+        row("clock", "Timestamp", "stamp2", "#ffffff") + sub("Map furniture") +
+        row("shapes", "AOI Box", "aoi", "#ffffff") +
+        row("dblArrow", "Distance Line", "distance", "#ffffff") +
+        row("gridDots", "Map Legend", "maplegend", "#ffffff") +
+        row("layout", "Footer Strap", "footer", "#E5323E") +
         row("gps", "Scale Bar & North", "scalebar", "#ffffff") +
         '<div class="lib-item' + (trackOn ? " on" : "") + '" data-kind="tracktool"><span class="li-icon" style="color:#E5323E">' + Icons.svg("edit", { size: 16 }) +
           '</span>Track (click waypoints)<span class="li-add">' + Icons.svg("plus", { size: 14 }) + "</span></div>" +
@@ -2250,6 +2534,50 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
         h += group("Line", kSeg("Direction", "chevrons", [[true, "On"], [false, "Off"]], o.chevrons !== false) +
           kNum("Width", "lineW", o.lineW, 1, 40) + kNum("Pin size", "f", o.f, 6, 80) + colorRow("accent", o.accent));
       }
+      if (o.type === "shiptag") {
+        h += group("Tag", kText("Label", "label", o.label) + colorRow("accent", o.accent) +
+          kSlider("Opacity", "bgOpacity", Math.round((o.bgOpacity == null ? 0.92 : o.bgOpacity) * 100), 0, 100, "%", "pct") + kNum("Text size", "f", o.f, 6, 80));
+        var tl = kSeg("Leader", "leaderShow", [[true, "On"], [false, "Off"]], o.leaderShow !== false);
+        if (o.leaderShow !== false) tl += kSlider("Angle", "leaderAngle", Math.round(o.leaderAngle || 0), 0, 359, "°") + kNum("Length", "leaderLen", Math.round(o.leaderLen || 0), 0, 4000) +
+          kSeg("End", "leaderEnd", [["none", "None"], ["dot", "Dot"], ["ring", "Ring"]], o.leaderEnd || "ring");
+        h += group("Leader line", tl);
+      } else if (o.type === "distance") {
+        h += group("Distance", kText("Label", "label", o.label, "e.g. 12.4 km") + kSeg("Ends", "ends", [["none", "None"], ["dot", "Dot"], ["tick", "Tick"]], o.ends || "none") +
+          '<p class="layers-hint" style="margin:2px 0 6px">Stretch to length, then use the rotate handle to aim it.</p>' +
+          colorRow("color", o.color) + kNum("Size", "f", o.f, 6, 80));
+      } else if (o.type === "aoi") {
+        h += group("Area", kText("Tab label", "label", o.label, "leave empty to hide") + kSeg("Line", "dashed", [[true, "Dashed"], [false, "Solid"]], o.dashed !== false) +
+          kSlider("Fill", "fill", Math.round((o.fill || 0) * 100), 0, 60, "%", "pct") + colorRow("color", o.color) + kNum("Size", "f", o.f, 6, 80));
+      } else if (o.type === "poipin") {
+        h += group("Pin", kText("Name", "title", o.title) + kText("Detail", "subtitle", o.subtitle, "e.g. coordinates") +
+          kSeg("Card", "card", [[true, "On"], [false, "Off"]], o.card !== false) + colorRow("accent", o.accent) + kNum("Size", "f", o.f, 6, 80));
+      } else if (o.type === "zonelabel") {
+        h += group("Zone", kText("Kicker", "kicker", o.kicker, "optional") + kText("Name", "name", o.name) + kText("Badge", "badge", o.badge, "optional") +
+          colorRow("accent", o.accent) + kNum("Size", "f", o.f, 6, 80));
+      } else if (o.type === "placelabel") {
+        h += group("Place", kText("Name", "name", o.name) + kText("Second line", "sub", o.sub, "optional") +
+          kSeg("Align", "align", [["left", "Left"], ["center", "Centre"]], o.align || "center") + colorRow("color", o.color) + kNum("Size", "f", o.f, 6, 120));
+      } else if (o.type === "stamp2") {
+        h += group("Timestamp", kText("Label", "kicker", o.kicker, "optional") + kText("Date & time", "value", o.value) +
+          '<div class="prop-row"><button class="view-btn" data-kact="now" style="flex:1">' + Icons.svg("clock", { size: 14 }) + "Set to now (UTC)</button></div>" + kNum("Size", "f", o.f, 6, 80));
+      } else if (o.type === "maplegend") {
+        var its = (o.items || []).map(function (it, i) {
+          return '<div class="leg-row"><input type="color" data-kitem="color" data-kidx="' + i + '" value="' + esc(it.color || "#ffffff") + '" title="Colour" style="width:28px;height:28px;padding:0;border:0;background:none;flex:none">' +
+            '<select class="select" data-kitem="sym" data-kidx="' + i + '" style="width:92px;flex:none">' + LEGEND_SYMS.map(function (sy) {
+              return '<option value="' + sy[0] + '"' + (it.sym === sy[0] ? " selected" : "") + ">" + sy[1] + "</option>"; }).join("") + "</select>" +
+            '<input class="input leg-label" data-kitem="label" data-kidx="' + i + '" value="' + esc(it.label) + '" placeholder="Label">' +
+            '<button class="leg-x" data-kitemdel="' + i + '" title="Remove">' + Icons.svg("trash", { size: 13 }) + "</button></div>";
+        }).join("");
+        h += group("Legend", kText("Title", "title", o.title, "optional") + its +
+          '<button class="view-btn leg-add" data-kitemadd="1">' + Icons.svg("plus", { size: 14 }) + "Add item</button>" + kNum("Size", "f", o.f, 6, 80));
+      } else if (o.type === "footer") {
+        var brands = Store.getBrandAssets();
+        var logoSel = '<div class="prop-row"><label>Logo</label><div class="ctrl"><select class="select" data-klogo="1"><option value="">None</option>' +
+          brands.map(function (a) { return '<option value="' + a.id + '"' + (o.logoId === a.id ? " selected" : "") + ">" + esc(a.name) + "</option>"; }).join("") +
+          "</select></div></div>" + (brands.length ? "" : '<p class="layers-hint" style="margin:2px 0 6px">Add your logo in the Brand tab to use it here.</p>');
+        h += group("Footer", kText("Title", "title", o.title) + kText("Subtitle", "subtitle", o.subtitle, "optional") + logoSel +
+          colorRow("accent", o.accent) + kSlider("Opacity", "bgOpacity", Math.round((o.bgOpacity == null ? 0.96 : o.bgOpacity) * 100), 0, 100, "%", "pct") + kNum("Size", "f", o.f, 6, 80));
+      }
       return h;
     }
 
@@ -2263,7 +2591,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
           var v = inp.value;
           if (kind === "num") { v = +v; if (isNaN(v)) return; }
           if (kind === "pct") v = +v / 100;
-          if (key === "f" && (ob.type === "callout" || ob.type === "scalebar") && ob.f && v > 0) {
+          if (key === "f" && (ob.type === "callout" || ob.type === "scalebar" || ob.type === "distance") && ob.f && v > 0) {
             var k = v / ob.f; ob.w = Math.round(ob.w * k); if (ob.leaderLen) ob.leaderLen = Math.round(ob.leaderLen * k); if (ob.radius) ob.radius = Math.round(ob.radius * k);
           }
           ob[key] = v;
@@ -2299,6 +2627,32 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
         inp.addEventListener("input", function () { var ob = getSel(); if (!ob) return; ob.times[+inp.getAttribute("data-ktime")] = inp.value; refresh(ob, false); });
         inp.addEventListener("change", function () { pushHistory(); });
       });
+      panel.querySelectorAll("[data-kitem]").forEach(function (inp) {
+        var ev = inp.tagName === "SELECT" ? "change" : "input";
+        inp.addEventListener(ev, function () {
+          var ob = getSel(); if (!ob) return;
+          ob.items[+inp.getAttribute("data-kidx")][inp.getAttribute("data-kitem")] = inp.value; refresh(ob, false);
+          var ph = panel.querySelector('[data-prop="h"]'); if (ph) ph.value = Math.round(ob.h);
+        });
+        inp.addEventListener("change", function () { pushHistory(); });
+      });
+      panel.querySelectorAll("[data-kitemdel]").forEach(function (b) {
+        b.addEventListener("click", function () { var ob = getSel(); ob.items.splice(+b.getAttribute("data-kitemdel"), 1); refresh(ob, true); pushHistory(); });
+      });
+      panel.querySelectorAll("[data-kitemadd]").forEach(function (b) {
+        b.addEventListener("click", function () { var ob = getSel(); ob.items = ob.items || []; ob.items.push({ sym: "dot", color: "#00AEEF", label: "New item" }); refresh(ob, true); pushHistory(); });
+      });
+      panel.querySelectorAll("[data-klogo]").forEach(function (sel) {
+        sel.addEventListener("change", function () {
+          var ob = getSel(); if (!ob) return;
+          var a = Store.getBrandAssets().filter(function (x) { return x.id === sel.value; })[0];
+          if (a) { ob.logoId = a.id; ob.logo = a.src; ob.logoW = a.w || 1; ob.logoH = a.h || 1; } else { ob.logoId = null; ob.logo = null; }
+          refresh(ob, false); pushHistory();
+        });
+      });
+      panel.querySelectorAll('[data-kact="now"]').forEach(function (b) {
+        b.addEventListener("click", function () { var ob = getSel(); ob.value = utcStamp(); refresh(ob, true); pushHistory(); });
+      });
       panel.querySelectorAll('[data-kact="upload"]').forEach(function (b) { b.addEventListener("click", function () { pick(getSel()); }); });
     }
     function pick(ob) {
@@ -2312,7 +2666,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
       inp.click();
     }
 
-    return { has: has, init: init, fit: fit, autoH: autoH, heightFor: heightFor, svg: svg, contentHTML: contentHTML, draw: draw,
+    return { has: has, init: init, fit: fit, autoH: autoH, autoSize: autoSize, place: place, heightFor: heightFor, svg: svg, contentHTML: contentHTML, draw: draw,
              icon: icon, label: label, libHTML: libHTML, props: props, wire: wire };
   })();
 
@@ -3666,6 +4020,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
     o.x = Math.round(c.x - o.w / 2); o.y = Math.round(c.y - o.h / 2);
     if (o.type === "watermark" && o.wmStyle !== "corner" && !atImage) { o.x = 0; o.y = 0; }
     if (S.snap) { o.x = snap(o.x); o.y = snap(o.y); }
+    if (Kit.has(o.type)) Kit.place(o, atImage);
     S.objects.push(o); select(o.id); pushHistory(); markDirty();
   }
   function snap(v) { return S.snap ? Math.round(v / S.grid) * S.grid : v; }
@@ -3957,6 +4312,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
     var anchor = { x: c0.x + ux.x * (-dir[0] * w0) + uy.x * (-dir[1] * h0), y: c0.y + ux.y * (-dir[0] * w0) + uy.y * (-dir[1] * h0) };
     var editW = dir[0] !== 0, editH = dir[1] !== 0;
     var keepAspect = (o.type === "icon" || o.type === "photo" || o.type === "ring");
+    var f0 = o.f;
     function mv(ev) {
       var p = toImage(ev.clientX, ev.clientY);
       var d = { x: p.x - anchor.x, y: p.y - anchor.y };
@@ -3966,6 +4322,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
       var nh = editH ? Math.max(12, Math.abs(projY)) : h0;
       if (keepAspect && editW && editH) { var ratio = w0 / h0; if (nw / nh > ratio) nw = nh * ratio; else nh = nw / ratio; }
       if (S.snap) { nw = Math.max(12, snap(nw)); nh = Math.max(12, snap(nh)); }
+      if (Kit.autoSize(o)) { o.f = Math.max(5, Math.round(f0 * (editW ? nw / w0 : nh / h0))); Kit.fit(o); nw = o.w; nh = o.h; }
       if (Kit.autoH(o)) { var _w0 = o.w; o.w = Math.round(nw); nh = Kit.heightFor(o); o.w = _w0; }
       var sgnX = dir[0] > 0 ? 1 : (dir[0] < 0 ? -1 : 0);
       var sgnY = dir[1] > 0 ? 1 : (dir[1] < 0 ? -1 : 0);
