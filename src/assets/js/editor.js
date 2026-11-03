@@ -230,6 +230,7 @@
   ============================================================ */
   var Kit = (function () {
     var TYPES = { callout: 1, ring: 1, scalebar: 1, track: 1, shiptag: 1, distance: 1, aoi: 1, poipin: 1, zonelabel: 1, placelabel: 1, stamp2: 1, maplegend: 1, footer: 1 };
+    var LASTBOX = typeof WeakMap !== "undefined" ? new WeakMap() : { get: function () {}, set: function () {} };
     var AUTOSIZE = { shiptag: 1, poipin: 1, zonelabel: 1, placelabel: 1, stamp2: 1, maplegend: 1 };
     var NAVY = "#0B1A2E", MUTED = "#8FA3B8";
     function has(t) { return !!TYPES[t]; }
@@ -280,6 +281,22 @@
       return { x: o.x + cx + dx * Math.cos(a) - dy * Math.sin(a), y: o.y + cy + dx * Math.sin(a) + dy * Math.cos(a) };
     }
 
+    // Leader line colour/thickness are independent of the header/accent colour.
+    function leaderColor(o) { return o.leaderColor || o.accent; }
+    function leaderWidth(o) { return o.leaderW > 0 ? o.leaderW : Math.max(1.5, o.f * 0.14); }
+
+    // Arrowhead whose tip sits at (ex, ey), pointing along (sx,sy)→(ex,ey). Returns the
+    // shortened line end (so the line stops at the arrow's base) plus the arrow prims.
+    function arrowEnd(sx, sy, ex, ey, col, f, lw) {
+      var dx = ex - sx, dy = ey - sy, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+      var len = Math.max(lw * 3.2, f * 1.15), wid = Math.max(lw * 2.8, f * 0.95);
+      len = Math.min(len, L * 0.9);
+      var bx = ex - ux * len, by = ey - uy * len, px = -uy * wid / 2, py = ux * wid / 2;
+      var tri = pLine([[ex, ey], [bx + px, by + py], [bx - px, by - py]], true);
+      return { lx: bx + ux * len * 0.25, ly: by + uy * len * 0.25,
+               prims: [{ t: "path", d: tri, fill: col, stroke: "#000", strokeOp: 0.35, sw: 1, join: "round" }] };
+    }
+
     /* ============================ CALLOUT ============================ */
     var CALLOUTS = {
       alert: { accent: "#E09A16", header: "NO AIS SIGNAL", headerRight: "", title: "", rows: [],
@@ -293,10 +310,11 @@
                body: "", media: "zoom", leaderAngle: 90, leaderLen: 12, leaderEnd: "dot", wf: 33 }
     };
 
+    function headerSize(o) { return o.headerSize > 0 ? o.headerSize : Math.round(o.f * 0.86); }
     function calloutLayout(o) {
       var f = o.f, w = o.w, pad = Math.round(f * 1.25), innerW = Math.max(10, w - pad * 2);
       var hasHeader = !!(o.header || o.headerRight);
-      var hh = hasHeader ? Math.round(f * 2.3) : 0;
+      var hh = hasHeader ? Math.max(Math.round(f * 2.3), Math.round(headerSize(o) * 2.6)) : 0;
       var mediaH = (o.media === "zoom" || (o.media === "upload" && o.image)) ? Math.round(w * (o.imgRatio || 0.62)) : 0;
       var y = hh + mediaH, content = [], any = false;
       if (o.title) {
@@ -344,15 +362,17 @@
       var col = o.accent, rad = Math.round(o.radius == null ? f * 0.6 : o.radius);
       // leader (under the card)
       if (o.leaderShow) {
-        var g = calloutLeader(o, h), lw = Math.max(1.5, f * 0.14);
-        var tip = [[g.sx, g.sy], [g.ex, g.ey]];
+        var g = calloutLeader(o, h), lw = leaderWidth(o), lcol = leaderColor(o);
+        var arr = o.leaderEnd === "arrow" ? arrowEnd(g.sx, g.sy, g.ex, g.ey, lcol, f, lw) : null;
+        var tip = [[g.sx, g.sy], arr ? [arr.lx, arr.ly] : [g.ex, g.ey]];
         prims.push({ t: "path", d: pLine(tip), stroke: "#000", strokeOp: 0.35, sw: lw + 2, cap: "round" });
-        prims.push({ t: "path", d: pLine(tip), stroke: col, sw: lw, cap: "round" });
-        if (o.leaderEnd === "dot") prims.push({ t: "path", d: pCircle(g.ex, g.ey, f * 0.36), fill: col, stroke: "#000", strokeOp: 0.35, sw: 1 });
+        prims.push({ t: "path", d: pLine(tip), stroke: lcol, sw: lw, cap: "round" });
+        if (arr) prims = prims.concat(arr.prims);
+        else if (o.leaderEnd === "dot") prims.push({ t: "path", d: pCircle(g.ex, g.ey, Math.max(f * 0.36, lw * 1.6)), fill: lcol, stroke: "#000", strokeOp: 0.35, sw: 1 });
         else if (o.leaderEnd === "ring") {
-          var rr = f * 0.85;
+          var rr = Math.max(f * 0.85, lw * 3);
           prims.push({ t: "path", d: pCircle(g.ex, g.ey, rr), stroke: "#000", strokeOp: 0.35, sw: lw * 1.3 + 2 });
-          prims.push({ t: "path", d: pCircle(g.ex, g.ey, rr), stroke: col, sw: lw * 1.3, fill: col, fillOp: 0.08 });
+          prims.push({ t: "path", d: pCircle(g.ex, g.ey, rr), stroke: lcol, sw: lw * 1.3, fill: lcol, fillOp: 0.08 });
         }
         var tp = toImg(o, g.ex, g.ey, h);
         o.zoomX = Math.round(tp.x); o.zoomY = Math.round(tp.y);
@@ -363,13 +383,13 @@
       if (L.hh) {
         var flatBottom = L.mediaH || L.any;
         prims.push({ t: "path", d: pRect(0, 0, w, L.hh, [rad, rad, flatBottom ? 0 : rad, flatBottom ? 0 : rad]), fill: col });
-        var hc = o.headerColor || "#ffffff", hs = f * 0.86, tx = L.pad;
+        var hc = o.headerColor || "#ffffff", hs = headerSize(o), tx = L.pad, dr = hs * 0.35;
         if (o.headerDot !== false) {
-          prims.push({ t: "path", d: pCircle(L.pad + f * 0.3, L.hh / 2, f * 0.3), fill: hc });
-          tx = L.pad + f * 1.05;
+          prims.push({ t: "path", d: pCircle(L.pad + dr, L.hh / 2, dr), fill: hc });
+          tx = L.pad + dr * 2 + hs * 0.5;
         }
-        if (o.header) prims.push(T(tx, L.hh / 2, o.header, hs, 700, "Inter", hc, "start", f * 0.17));
-        if (o.headerRight) prims.push(T(w - L.pad, L.hh / 2, o.headerRight, hs, 600, "Inter", hc, "end", f * 0.14));
+        if (o.header) prims.push(T(tx, L.hh / 2, o.header, hs, 700, "Inter", hc, "start", hs * 0.2));
+        if (o.headerRight) prims.push(T(w - L.pad, L.hh / 2, o.headerRight, hs, 600, "Inter", hc, "end", hs * 0.16));
       }
       if (L.mediaH) {
         if (o.media === "upload" && o.image) {
@@ -496,27 +516,39 @@
 
     /* ============================ MORE MAP COMPONENTS ============================ */
     function leaderEnd(o, h, col, f, endKind) {
-      var g = calloutLeader(o, h), lw = Math.max(1.5, f * 0.14), out = [], seg = [[g.sx, g.sy], [g.ex, g.ey]];
+      var g = calloutLeader(o, h), lw = o.leaderW > 0 ? o.leaderW : Math.max(1.5, f * 0.14), out = [];
+      var arr = endKind === "arrow" ? arrowEnd(g.sx, g.sy, g.ex, g.ey, col, f, lw) : null;
+      var seg = [[g.sx, g.sy], arr ? [arr.lx, arr.ly] : [g.ex, g.ey]];
       out.push({ t: "path", d: pLine(seg), stroke: "#000", strokeOp: 0.35, sw: lw + 2, cap: "round" });
       out.push({ t: "path", d: pLine(seg), stroke: col, sw: lw, cap: "round" });
+      if (arr) return out.concat(arr.prims);
       if (endKind === "ring") {
-        var rr = f * 0.8;
+        var rr = Math.max(f * 0.8, lw * 3);
         out.push({ t: "path", d: pCircle(g.ex, g.ey, rr), stroke: "#000", strokeOp: 0.35, sw: lw * 1.4 + 2 });
         out.push({ t: "path", d: pCircle(g.ex, g.ey, rr), stroke: col, sw: lw * 1.4, fill: col, fillOp: 0.1 });
-      } else if (endKind === "dot") out.push({ t: "path", d: pCircle(g.ex, g.ey, f * 0.36), fill: col });
+      } else if (endKind === "dot") out.push({ t: "path", d: pCircle(g.ex, g.ey, Math.max(f * 0.36, lw * 1.6)), fill: col });
       return out;
     }
 
-    // 05 — AIS ship tag: label with accent bar + leader to a ring
+    // 05 — AIS ship tag: name + optional detail rows (type, IMO, flag…) with accent bar + leader to a ring
+    function shipDetails(o) { return String(o.detail || "").split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean); }
     function shiptagLayout(o) {
       var f = o.f, ts = f * 1.25, bar = Math.max(3, Math.round(f * 0.3)), px = Math.round(f * 0.8), th = Math.round(f * 2.4);
-      var w = Math.round(bar + px * 2 + textW(o.label || " ", 600, Math.round(ts), "Inter")), h = th, rad = Math.round(f * 0.25);
+      var det = shipDetails(o), ds = Math.round(f * 0.85), dlh = Math.round(f * 1.3), tp = Math.round(f * 0.55), nlh = Math.round(f * 1.6);
+      var tw = textW(o.label || " ", 600, Math.round(ts), "Inter");
+      det.forEach(function (l) { tw = Math.max(tw, textW(l, 500, ds, "Inter")); });
+      var h = det.length ? tp + nlh + Math.round(f * 0.1) + det.length * dlh + Math.round(f * 0.55) : th;
+      var w = Math.round(bar + px * 2 + tw), rad = Math.round(f * 0.25);
       var prims = [];
-      if (o.leaderShow !== false) prims = prims.concat(leaderEnd({ w: w, leaderAngle: o.leaderAngle, leaderLen: o.leaderLen }, h, o.accent, f, o.leaderEnd || "ring"));
+      if (o.leaderShow !== false) prims = prims.concat(leaderEnd({ w: w, leaderAngle: o.leaderAngle, leaderLen: o.leaderLen, leaderW: o.leaderW }, h, leaderColor(o), f, o.leaderEnd || "ring"));
       prims.push({ t: "path", d: pRect(0, 0, w, h, rad), fill: o.bg || NAVY, fillOp: o.bgOpacity == null ? 0.92 : o.bgOpacity,
                    shadow: { blur: Math.round(f * 0.8), dy: Math.round(f * 0.25), op: 0.35 } });
       prims.push({ t: "path", d: pRect(0, 0, bar, h, [rad, 0, 0, rad]), fill: o.accent });
-      prims.push(T(bar + px, h / 2, o.label || "", ts, 600, "Inter", "#ffffff"));
+      var al = alignOf(o), ax = al === "center" ? bar + px + tw / 2 : (al === "right" ? w - px : bar + px), an = al === "center" ? "middle" : (al === "right" ? "end" : "start");
+      prims.push(T(ax, det.length ? tp + nlh / 2 : h / 2, o.label || "", ts, 600, "Inter", "#ffffff", an));
+      det.forEach(function (l, i) {
+        prims.push(T(ax, tp + nlh + Math.round(f * 0.1) + i * dlh + dlh / 2, l, ds, 500, "Inter", o.detailColor || "#AFC0D0", an));
+      });
       return { w: w, h: h, prims: prims };
     }
 
@@ -572,9 +604,10 @@
         var lines = (o.title ? 1 : 0) + (o.subtitle ? 1 : 0), chh = Math.round(f * (lines === 2 ? 3.4 : 2.3)), top = Math.round(ph * 0.45);
         prims.push({ t: "path", d: pRect(x0, top, cw, chh, Math.round(f * 0.35)), fill: o.bg || NAVY, fillOp: o.bgOpacity == null ? 0.92 : o.bgOpacity,
                      stroke: "#ffffff", strokeOp: 0.08, sw: 1, shadow: { blur: Math.round(f * 1.0), dy: Math.round(f * 0.3), op: 0.35 } });
-        var yy = top + (lines === 2 ? f * 1.15 : chh / 2);
-        if (o.title) { prims.push(T(x0 + padC, yy, o.title, tS, 600, "Inter", "#ffffff")); yy += f * 1.2; }
-        if (o.subtitle) prims.push(T(x0 + padC, lines === 2 ? yy : chh / 2 + top, o.subtitle, sS, 400, "JetBrains Mono", "#AFC0D0"));
+        var yy = top + (lines === 2 ? f * 1.15 : chh / 2), pa2 = alignOf(o);
+        var px2 = pa2 === "center" ? x0 + cw / 2 : (pa2 === "right" ? x0 + cw - padC : x0 + padC), pn2 = pa2 === "center" ? "middle" : (pa2 === "right" ? "end" : "start");
+        if (o.title) { prims.push(T(px2, yy, o.title, tS, 600, "Inter", "#ffffff", pn2)); yy += f * 1.2; }
+        if (o.subtitle) prims.push(T(px2, lines === 2 ? yy : chh / 2 + top, o.subtitle, sS, 400, "JetBrains Mono", "#AFC0D0", pn2));
         w = Math.round(x0 + cw); h = Math.max(ph, top + chh);
       }
       return { w: w, h: h, prims: prims };
@@ -588,9 +621,9 @@
       var h = Math.round(pad * 2 + (o.kicker ? f * 1.25 : 0) + f * 1.55), w = Math.round(pad * 2 + colW + gap + bw);
       var prims = [{ t: "path", d: pRect(0, 0, w, h, Math.round(f * 0.5)), fill: o.bg || NAVY, fillOp: o.bgOpacity == null ? 0.92 : o.bgOpacity,
                      stroke: "#ffffff", strokeOp: 0.08, sw: 1, shadow: { blur: Math.round(f * 1.0), dy: Math.round(f * 0.3), op: 0.35 } }];
-      var y = pad;
-      if (o.kicker) { prims.push(T(pad, y + f * 0.55, o.kicker, kS, 700, "Inter", o.kickerColor || "#9CD8FF", "start", ls)); y += f * 1.25; }
-      prims.push(T(pad, y + f * 0.78, o.name || "", nS, 700, "Inter", "#ffffff"));
+      var y = pad, za = alignOf(o), zx = za === "center" ? pad + colW / 2 : (za === "right" ? pad + colW : pad), zn = za === "center" ? "middle" : (za === "right" ? "end" : "start");
+      if (o.kicker) { prims.push(T(zx, y + f * 0.55, o.kicker, kS, 700, "Inter", o.kickerColor || "#9CD8FF", zn, ls)); y += f * 1.25; }
+      prims.push(T(zx, y + f * 0.78, o.name || "", nS, 700, "Inter", "#ffffff", zn));
       if (o.badge) {
         var bx = pad + colW + gap, by = (h - bh) / 2;
         prims.push({ t: "path", d: pRect(bx, by, bw, bh, Math.round(f * 0.3)), fill: o.accent });
@@ -603,11 +636,13 @@
     function placeLayout(o) {
       var f = o.f, s1 = Math.round(f * 2.4), s2 = Math.round(f * 1.1), ls1 = f * 0.05, ls2 = f * 0.3;
       var ow1 = Math.max(2, f * 0.32), ow2 = Math.max(1.5, f * 0.24), oc = o.outline || NAVY, col = o.color || "#ffffff";
+      var oop = shMul(o);
       var w1 = textW(o.name || " ", 800, s1, "Exo", ls1), w2 = o.sub ? textW(o.sub, 700, s2, "Inter", ls2) : 0;
       var w = Math.round(Math.max(w1, w2) + ow1 * 2 + 4), h = Math.round(s1 * 1.2 + (o.sub ? s2 * 1.5 : 0) + ow1);
-      var ax = o.align === "left" ? ow1 : w / 2, an = o.align === "left" ? "start" : "middle";
-      var prims = [T(ax, ow1 / 2 + s1 * 0.6, o.name || "", s1, 800, "Exo", col, an, ls1, { color: oc, w: ow1 })];
-      if (o.sub) prims.push(T(ax, ow1 / 2 + s1 * 1.2 + s2 * 0.7, o.sub, s2, 700, "Inter", col, an, ls2, { color: oc, w: ow2 }));
+      var pa = o.align === "left" || o.align === "right" ? o.align : "center";
+      var ax = pa === "left" ? ow1 : (pa === "right" ? w - ow1 : w / 2), an = pa === "left" ? "start" : (pa === "right" ? "end" : "middle");
+      var prims = [T(ax, ow1 / 2 + s1 * 0.6, o.name || "", s1, 800, "Exo", col, an, ls1, { color: oc, w: ow1, op: oop })];
+      if (o.sub) prims.push(T(ax, ow1 / 2 + s1 * 1.2 + s2 * 0.7, o.sub, s2, 700, "Inter", col, an, ls2, { color: oc, w: ow2, op: oop }));
       return { w: w, h: h, prims: prims };
     }
 
@@ -671,12 +706,24 @@
       return { w: w, h: h, prims: prims };
     }
 
-    // 17 — footer strap: full-width band, top rule, title + subtitle, optional logo
+    function iconImageSrc(name, color, size) {
+      var svgTxt = Icons.svg(name, { size: size, stroke: color });
+      if (svgTxt.indexOf("xmlns") < 0) svgTxt = svgTxt.replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" ');
+      return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgTxt);
+    }
+    // 17 — footer strap: full-width band, top rule, title + subtitle, optional logo.
+    // Strap height and text size are independent; the strap never gets shorter than its text.
+    function footerMinH(o) { var f = o.f; return Math.max(2, Math.round(f * 0.16)) + Math.round(f * 1.75 * 1.35); }
     function footerPrims(o) {
-      var f = o.f, w = o.w, h = Math.round(f * 3.6), rule = Math.max(2, Math.round(f * 0.16)), pad = Math.round(f * 1.6), cy = rule + (h - rule) / 2;
+      var f = o.f, w = o.w, h = Math.max(footerMinH(o), Math.round(o.h || f * 3.6)), rule = Math.max(2, Math.round(f * 0.16)), pad = Math.round(f * 1.6), cy = rule + (h - rule) / 2;
       var prims = [{ t: "path", d: pRect(0, 0, w, h, 0), fill: o.bg || NAVY, fillOp: o.bgOpacity == null ? 0.96 : o.bgOpacity },
                    { t: "path", d: pRect(0, 0, w, rule, 0), fill: o.accent }];
       var tS = Math.round(f * 1.75), sS = Math.round(f * 1.45), x = pad;
+      if (o.showIcon && o.iconKey) {   // optional icon before the title
+        var isz = Math.max(8, Math.min(o.iconSize > 0 ? o.iconSize : Math.round(f * 1.9), h - rule - 4));
+        prims.push({ t: "image", x: x, y: cy - isz / 2, w: isz, h: isz, src: iconImageSrc(o.iconKey, o.iconColor || "#ffffff", isz), natW: isz, natH: isz, contain: true });
+        x += isz + Math.round(f * 0.7);
+      }
       if (o.title) { prims.push(T(x, cy, o.title, tS, 800, "Exo", "#ffffff")); x += textW(o.title, 800, tS, "Exo") + f * 0.9; }
       if (o.subtitle) prims.push(T(x, cy, o.subtitle, sS, 400, "Inter", "#C9D6E3"));
       if (o.logo) {
@@ -687,7 +734,18 @@
     }
 
     /* ============================ RENDERERS ============================ */
+    // Shadow opacity (0–1, default 1 = the designed look). Older place labels used "shadowOp".
+    function shMul(o) { var v = o.shadowOpacity != null ? o.shadowOpacity : (o.shadowOp != null ? o.shadowOp : 1); return Math.max(0, Math.min(1, +v)); }
+    var HAS_SHADOW = { callout: 1, shiptag: 1, distance: 1, poipin: 1, zonelabel: 1, stamp2: 1, maplegend: 1, track: 1, placelabel: 1 };
     function build(o) {
+      var prims = buildRaw(o), m = shMul(o);
+      if (m !== 1) prims.forEach(function (p) {
+        if (!p.shadow) return;
+        if (m <= 0) delete p.shadow; else p.shadow = { blur: p.shadow.blur, dy: p.shadow.dy, op: Math.round(p.shadow.op * m * 1000) / 1000 };
+      });
+      return prims;
+    }
+    function buildRaw(o) {
       if (o.type === "callout") return calloutPrims(o);
       if (o.type === "ring") return ringPrims(o);
       if (o.type === "scalebar") return scalePrims(o);
@@ -713,6 +771,7 @@
           if (any && !drag) { renderObjects(); wireObjectEvents(); }
         });
       }
+      if (o.type === "footer") LASTBOX.set(o, { y: o.y, h: o.h });   // last drawn box: lets edits keep a bottom-docked footer docked
       var defs = "", body = "";
       build(o).forEach(function (p) {
         if (p.t === "path") {
@@ -730,7 +789,8 @@
         } else if (p.t === "text") {
           body += '<text x="' + r1(p.x) + '" y="' + r1(p.y) + '" text-anchor="' + p.anchor + '" dominant-baseline="central" fill="' + p.fill +
             '" style="font-family:\'' + p.font + '\',sans-serif;font-size:' + p.size + "px;font-weight:" + p.weight + ";" +
-            (p.ls ? "letter-spacing:" + r1(p.ls) + "px;" : "") + (p.outline ? "paint-order:stroke;stroke:" + p.outline.color + ";stroke-width:" + r1(p.outline.w * 2) + "px;stroke-linejoin:round;" : "") +
+            (p.ls ? "letter-spacing:" + r1(p.ls) + "px;" : "") + (p.outline && p.outline.op !== 0 ? "paint-order:stroke;stroke:" + p.outline.color + ";stroke-width:" + r1(p.outline.w * 2) + "px;stroke-linejoin:round;" +
+              (p.outline.op != null && p.outline.op < 1 ? "stroke-opacity:" + p.outline.op + ";" : "") : "") +
             'white-space:pre">' + esc(p.s) + "</text>";
         } else if (p.t === "image" && p.src) {
           if (p.crop) {
@@ -775,7 +835,10 @@
             ctx.fillStyle = p.fill; ctx.textBaseline = "middle";
             ctx.textAlign = p.anchor === "middle" ? "center" : (p.anchor === "end" ? "right" : "left");
             if ("letterSpacing" in ctx) ctx.letterSpacing = (p.ls || 0) + "px";
-            if (p.outline) { ctx.strokeStyle = p.outline.color; ctx.lineWidth = p.outline.w * 2; ctx.lineJoin = "round"; ctx.strokeText(p.s, p.x, p.y); }
+            if (p.outline && p.outline.op !== 0) {
+              ctx.save(); ctx.globalAlpha *= (p.outline.op == null ? 1 : p.outline.op);
+              ctx.strokeStyle = p.outline.color; ctx.lineWidth = p.outline.w * 2; ctx.lineJoin = "round"; ctx.strokeText(p.s, p.x, p.y); ctx.restore();
+            }
             ctx.fillText(p.s, p.x, p.y); ctx.restore();
           } else if (p.t === "image" && p._img) {
             var im = p._img;
@@ -807,7 +870,7 @@
       if (kind === "callout") {
         var c = CALLOUTS[variant] || CALLOUTS.alert, f = unit(0.0072, 12);
         o.type = "callout"; o.variant = variant || "alert"; o.f = f;
-        o.accent = c.accent; o.headerColor = "#ffffff"; o.headerDot = true;
+        o.accent = c.accent; o.leaderColor = c.accent; o.headerColor = "#ffffff"; o.headerDot = true;
         o.header = c.header; o.headerRight = c.headerRight; o.title = c.title;
         o.rows = c.rows.map(function (r) { return { k: r.k, v: r.v }; }); o.body = c.body;
         o.media = c.media; o.zoom = 4; o.imgRatio = 0.62; o.image = null;
@@ -833,7 +896,7 @@
         if (!opts.points) { o.w = Math.round(iw() * 0.25); o.h = Math.round(iw() * 0.18); }
       } else if (kind === "shiptag") {
         var f1 = unit(0.0075, 12);
-        o.type = "shiptag"; o.f = f1; o.label = "VESSEL NAME"; o.accent = variant === "noais" ? "#F59E0B" : "#22C55E"; o.variant = variant || "match";
+        o.type = "shiptag"; o.f = f1; o.label = "VESSEL NAME"; o.detail = ""; o.align = "center"; o.accent = variant === "noais" ? "#F59E0B" : "#22C55E"; o.leaderColor = o.accent; o.variant = variant || "match";
         o.leaderShow = true; o.leaderAngle = 15; o.leaderLen = Math.round(f1 * 5); o.leaderEnd = "ring"; o.bgOpacity = 0.92;
       } else if (kind === "distance") {
         var f2 = unit(0.0075, 12);
@@ -844,10 +907,10 @@
         o.w = Math.round(iw() * 0.16); o.h = Math.round(iw() * 0.12);
       } else if (kind === "poipin") {
         var f4 = unit(0.0075, 12);
-        o.type = "poipin"; o.f = f4; o.accent = "#2F9BFF"; o.title = "Port of Sulina"; o.subtitle = "45°09′25″ N  029°40′20″ E"; o.card = true; o.bgOpacity = 0.92;
+        o.type = "poipin"; o.f = f4; o.align = "center"; o.accent = "#2F9BFF"; o.title = "Port of Sulina"; o.subtitle = "45°09′25″ N  029°40′20″ E"; o.card = true; o.bgOpacity = 0.92;
       } else if (kind === "zonelabel") {
         var f5 = unit(0.0075, 12);
-        o.type = "zonelabel"; o.f = f5; o.kicker = "LISTED AREA"; o.name = "Zone name"; o.badge = "JWLA-000"; o.accent = "#2F80ED"; o.kickerColor = "#9CD8FF"; o.bgOpacity = 0.92;
+        o.type = "zonelabel"; o.f = f5; o.align = "center"; o.kicker = "LISTED AREA"; o.name = "Zone name"; o.badge = "JWLA-000"; o.accent = "#2F80ED"; o.kickerColor = "#9CD8FF"; o.bgOpacity = 0.92;
       } else if (kind === "placelabel") {
         var f6 = unit(0.0085, 12);
         o.type = "placelabel"; o.f = f6; o.name = "SULINA"; o.sub = "ROMANIA"; o.color = "#ffffff"; o.outline = NAVY; o.align = "center";
@@ -863,12 +926,34 @@
       } else if (kind === "footer") {
         var f9 = unit(0.0095, 12);
         o.type = "footer"; o.f = f9; o.title = "VESSEL NAME"; o.subtitle = "Imagery type detection · Black Sea"; o.accent = "#E5323E";
-        o.bgOpacity = 0.96; o.logo = null; o.w = iw();
+        o.bgOpacity = 0.96; o.logo = null; o.w = iw(); o.h = Math.round(f9 * 3.6);
       }
       fit(o);
     }
-    function autoH(o) { return o.type === "callout" || o.type === "scalebar" || o.type === "distance" || o.type === "footer"; }
+    function autoH(o) { return o.type === "callout" || o.type === "scalebar" || o.type === "distance"; }
     function autoSize(o) { return !!AUTOSIZE[o.type]; }
+    // Footer, scale bar and distance line have a height set by their text size:
+    // dragging or typing a height scales them (width stays free).
+    function heightScaled(o) { return o.type === "scalebar" || o.type === "distance"; }
+    function minHeight(o) { return o.type === "footer" ? footerMinH(o) : 0; }
+    // Callouts with an image: a new height goes to the image area (header + text keep their size).
+    function mediaResize(o, nw, nh) {
+      if (o.type !== "callout" || !(o.media === "zoom" || (o.media === "upload" && o.image))) return false;
+      var w0 = o.w; o.w = Math.max(1, Math.round(nw));
+      var L = calloutLayout(o), non = L.h - L.mediaH, mh = Math.max(Math.round(o.f * 2), Math.round(nh) - non);
+      o.imgRatio = Math.max(0.1, Math.min(4, mh / o.w)); o.w = w0;
+      return true;
+    }
+    function editSize(o, prop) {
+      if (prop === "h" && mediaResize(o, o.w, o.h)) return;
+      if (prop === "h" && heightScaled(o)) {
+        var cur = heightFor(o);
+        if (cur > 0 && o.h > 0) o.f = Math.max(5, Math.round(o.f * o.h / cur));
+      } else if (autoSize(o) && (prop === "w" || prop === "h")) {
+        var sz = sizeOf(o); if (!sz) return;
+        var k = prop === "w" ? o.w / sz.w : o.h / sz.h; if (k > 0 && isFinite(k)) o.f = Math.max(5, Math.round(o.f * k));
+      }
+    }
     function sizeOf(o) {
       if (o.type === "shiptag") return shiptagLayout(o);
       if (o.type === "poipin") return poipinLayout(o);
@@ -882,13 +967,12 @@
       if (o.type === "callout") return calloutLayout(o).h;
       if (o.type === "scalebar") return scaleLayout(o).h;
       if (o.type === "distance") return Math.round(o.f * 2.2);
-      if (o.type === "footer") return Math.round(o.f * 3.6);
       return o.h;
     }
     // default placement for new objects that belong at an edge
     function place(o, atImage) {
       if (!image) return;
-      if (o.type === "footer") { o.x = 0; o.w = image.w; fit(o); o.y = (atImage && atImage.y < image.h / 2) ? 0 : image.h - o.h; }
+      if (o.type === "footer") { o.x = 0; o.w = image.w; fit(o); o.y = (atImage && atImage.y < image.h / 2) ? 0 : image.h - o.h; LASTBOX.set(o, { y: o.y, h: o.h }); }
       if (o.type === "stamp2" && !atImage) { var m = Math.round(o.f * 1.5); o.x = image.w - o.w - m; o.y = m; }
     }
     function fit(o) {
@@ -896,6 +980,14 @@
       if (o.type === "callout") o.w = Math.max(o.w, Math.round(o.f * 9));
       if (o.type === "distance") o.w = Math.max(o.w, Math.round(o.f * 6));
       if (autoH(o)) o.h = heightFor(o);
+      if (o.type === "footer") {
+        // A footer on the bottom edge stays there when its height or text size changes
+        // (but not after the user has moved it somewhere else).
+        var prev = LASTBOX.get(o), pinB = image && prev && prev.y === o.y && Math.abs(prev.y + prev.h - image.h) <= 2;
+        o.h = Math.max(footerMinH(o), Math.round(o.h || o.f * 3.6));
+        if (pinB) o.y = image.h - o.h;
+        LASTBOX.set(o, { y: o.y, h: o.h });
+      }
       var sz = sizeOf(o); if (sz) { o.w = Math.max(4, Math.round(sz.w)); o.h = Math.max(4, Math.round(sz.h)); }
       if (o.type === "ring") { var s = Math.max(8, Math.round(Math.max(o.w, o.h))); o.w = s; o.h = s; }
       if (o.type === "track") {
@@ -955,22 +1047,51 @@
     }
 
     /* ============================ PROPERTIES ============================ */
-    function kNum(label, key, val, min, max) {
-      return '<div class="prop-row"><label>' + label + '</label><div class="ctrl"><input class="input" type="number" data-kprop="' + key + '" data-ktype="num" value="' + val + '" min="' + min + '" max="' + max + '"></div></div>';
+    function kNum(label, key, val, min, max, step) {
+      return '<div class="prop-row"><label>' + label + '</label><div class="ctrl"><input class="input" type="number" data-kprop="' + key + '" data-ktype="num" value="' + val + '" min="' + min + '" max="' + max + '"' + (step ? ' step="' + step + '"' : "") + '></div></div>';
     }
     function kText(label, key, val, ph) {
       return '<div class="prop-row"><label>' + label + '</label><div class="ctrl"><input class="input" type="text" data-kprop="' + key + '" value="' + esc(val) + '" placeholder="' + esc(ph || "") + '"></div></div>';
     }
-    function kArea(label, key, val) {
-      return '<div class="prop-row" style="align-items:flex-start"><label>' + label + '</label><div class="ctrl"><textarea class="input" rows="3" style="resize:vertical;min-height:64px;font:inherit" data-kprop="' + key + '">' + esc(val) + "</textarea></div></div>";
+    function kArea(label, key, val, ph) {
+      return '<div class="prop-row" style="align-items:flex-start"><label>' + label + '</label><div class="ctrl"><textarea class="input" rows="3" style="resize:vertical;min-height:64px;font:inherit" data-kprop="' + key + '" placeholder="' + esc(ph || "") + '">' + esc(val) + "</textarea></div></div>";
     }
-    function kSlider(label, key, val, min, max, unitTxt, type, step) {
-      return '<div class="prop-row"><label>' + label + '</label><div class="ctrl prop-num"><input type="range" data-kprop="' + key + '" data-ktype="' + (type || "num") + '" data-unit="' + (unitTxt || "") +
-        '" value="' + val + '" min="' + min + '" max="' + max + '" step="' + (step || 1) + '"><span class="val">' + val + (unitTxt || "") + "</span></div></div>";
+    function kSlider(label, key, val, min, max, unitTxt, type, step, withInput) {
+      var range = '<input type="range" data-kprop="' + key + '" data-ktype="' + (type || "num") + '" data-unit="' + (unitTxt || "") +
+        '" value="' + val + '" min="' + min + '" max="' + max + '" step="' + (step || 1) + '">';
+      if (withInput) {   // slider + exact-value box, kept in sync
+        return '<div class="prop-row"><label>' + label + '</label><div class="ctrl prop-num kslider-exact">' + range +
+          '<input class="input knum" type="number" data-kprop="' + key + '" data-ktype="num" value="' + (Math.round(val * 10) / 10) + '" min="' + min + '" max="' + max + '" step="0.1">' +
+          (unitTxt ? '<span class="kunit">' + unitTxt + "</span>" : "") + "</div></div>";
+      }
+      return '<div class="prop-row"><label>' + label + '</label><div class="ctrl prop-num">' + range + '<span class="val">' + val + (unitTxt || "") + "</span></div></div>";
     }
     function kSeg(label, key, opts, cur) {
       return '<div class="prop-row"><label>' + label + '</label><div class="ctrl seg2">' + opts.map(function (op) {
         return '<button data-kseg="' + key + '" data-kval="' + esc(JSON.stringify(op[0])) + '" class="' + (cur === op[0] ? "on" : "") + '">' + op[1] + "</button>";
+      }).join("") + "</div></div>";
+    }
+    // Align (left / centre / right) for label-style components. Older saved objects without
+    // the setting keep the left alignment they were drawn with.
+    function alignOf(o) { return o.align === "center" || o.align === "right" ? o.align : "left"; }
+    function kAlign(o) {
+      var cur = alignOf(o);
+      return '<div class="prop-row"><label>Align</label><div class="ctrl seg2">' + [["left", "alignL"], ["center", "alignC"], ["right", "alignR"]].map(function (a) {
+        return '<button data-kseg="align" data-kval="' + esc(JSON.stringify(a[0])) + '" class="' + (cur === a[0] ? "on" : "") + '" title="Align ' + a[0] + '">' + Icons.svg(a[1], { size: 15 }) + "</button>";
+      }).join("") + "</div></div>";
+    }
+    // Leader-end picker as icon buttons: a short leader line with each ending.
+    var END_ICONS = {
+      none:  '<path d="M3 12h16"/>',
+      dot:   '<path d="M3 12h11"/><circle cx="17.5" cy="12" r="3.5" fill="currentColor" stroke="none"/>',
+      ring:  '<path d="M3 12h9.5"/><circle cx="17" cy="12" r="4.5"/>',
+      arrow: '<path d="M3 12h12"/><path d="M14 7l7 5-7 5z" fill="currentColor"/>'
+    };
+    function kEnd(o, dflt) {
+      var cur = o.leaderEnd || dflt;
+      return '<div class="prop-row"><label>End</label><div class="ctrl seg2 kend">' + [["none", "None"], ["dot", "Dot"], ["ring", "Ring"], ["arrow", "Arrow"]].map(function (e) {
+        return '<button data-kseg="leaderEnd" data-kval="' + esc(JSON.stringify(e[0])) + '" class="' + (cur === e[0] ? "on" : "") + '" title="' + e[1] + '" aria-label="' + e[1] + '">' +
+          '<svg width="22" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' + END_ICONS[e[0]] + "</svg></button>";
       }).join("") + "</div></div>";
     }
     function group(title, inner) { return '<div class="prop-group"><h4>' + title + "</h4>" + inner + "</div>"; }
@@ -979,6 +1100,7 @@
       var h = "";
       if (o.type === "callout") {
         h += group("Header", kText("Title", "header", o.header, "e.g. NO AIS SIGNAL") + kText("Right tag", "headerRight", o.headerRight, "optional") +
+          kNum("Text size", "headerSize", headerSize(o), 6, 80) +
           kSeg("Dot", "headerDot", [[true, "On"], [false, "Off"]], o.headerDot !== false) + colorRow("accent", o.accent));
         var rows = (o.rows || []).map(function (r, i) {
           return '<div class="leg-row"><input class="input leg-label" data-krow="k" data-kidx="' + i + '" value="' + esc(r.k) + '" placeholder="Key">' +
@@ -989,13 +1111,13 @@
           '<button class="view-btn leg-add" data-krowadd="1">' + Icons.svg("plus", { size: 14 }) + "Add row</button>" + kArea("Note", "body", o.body));
         var media = kSeg("Image", "media", [["none", "None"], ["zoom", "Zoom"], ["upload", "Upload"]], o.media || "none");
         if (o.media === "zoom") media += kSlider("Magnify", "zoom", o.zoom || 4, 1, 16, "×", "num", 0.5) +
-          '<p class="layers-hint" style="margin:2px 0 6px">Shows the spot the leader points at. Drag the card to aim it.</p>';
+          '<p class="layers-hint" style="margin:2px 0 8px;font-size:11.5px;line-height:1.45;color:var(--text-3,#7f8ea3)">Shows the spot the leader points at. Drag the card to aim it.</p>';
         if (o.media === "upload") media += '<div class="prop-row"><button class="view-btn" data-kact="upload" style="flex:1">' + Icons.svg("image", { size: 14 }) + (o.image ? "Replace image…" : "Choose image…") + "</button></div>";
         if (o.media !== "none") media += kSlider("Height", "imgRatio", Math.round((o.imgRatio || 0.62) * 100), 25, 120, "%", "pct");
         h += group("Image", media);
         var lead = kSeg("Leader", "leaderShow", [[true, "On"], [false, "Off"]], !!o.leaderShow);
-        if (o.leaderShow) lead += kSlider("Angle", "leaderAngle", Math.round(o.leaderAngle || 0), 0, 359, "°") + kNum("Length", "leaderLen", Math.round(o.leaderLen || 0), 0, 4000) +
-          kSeg("End", "leaderEnd", [["none", "None"], ["dot", "Dot"], ["ring", "Ring"]], o.leaderEnd || "none");
+        if (o.leaderShow) lead += kSlider("Angle", "leaderAngle", o.leaderAngle || 0, 0, 360, "°", "num", 1, true) + kNum("Length", "leaderLen", Math.round(o.leaderLen || 0), 0, 4000) +
+          kEnd(o, "none") + kNum("Thickness", "leaderW", Math.round(leaderWidth(o) * 10) / 10, 0.5, 40, 0.5) + '<p class="layers-hint" style="margin:6px 0 6px;font-size:11.5px;line-height:1.45;color:var(--text-3,#7f8ea3)">Line colour</p>' + colorRow("leaderColor", leaderColor(o));
         h += group("Leader line", lead);
         h += group("Card", kNum("Text size", "f", o.f, 8, 80) + colorRow("bg", o.bg) +
           kSlider("Opacity", "bgOpacity", Math.round((o.bgOpacity == null ? 0.94 : o.bgOpacity) * 100), 0, 100, "%", "pct") + kNum("Radius", "radius", o.radius, 0, 60));
@@ -1005,9 +1127,9 @@
           kSlider("Fill", "ringFill", Math.round((o.ringFill == null ? 0.08 : o.ringFill) * 100), 0, 60, "%", "pct") + colorRow("accent", o.accent));
       } else if (o.type === "scalebar") {
         h += group("Scale", kNum("Distance", "maxValue", o.maxValue, 0, 100000) + kText("Unit", "unit", o.unit, "km") + kNum("Divisions", "divisions", o.divisions, 1, 10) +
-          '<p class="layers-hint" style="margin:2px 0 6px">Resize the bar so its length matches that distance on the image.</p>');
+          '<p class="layers-hint" style="margin:2px 0 8px;font-size:11.5px;line-height:1.45;color:var(--text-3,#7f8ea3)">Resize the bar so its length matches that distance on the image.</p>');
         var north = kSeg("North arrow", "showNorth", [[true, "On"], [false, "Off"]], !!o.showNorth);
-        if (o.showNorth) north += kSlider("Rotation", "northRot", Math.round(o.northRot || 0), -180, 180, "°");
+        if (o.showNorth) north += kSlider("Rotation", "northRot", o.northRot || 0, -180, 180, "°", "num", 1, true);
         h += group("North", north);
         var panel = kNum("Text size", "f", o.f, 8, 80) + colorRow("color", o.color) + kSeg("Panel", "panel", [[true, "On"], [false, "Off"]], o.panel !== false);
         if (o.panel !== false) panel += kSlider("Opacity", "bgOpacity", Math.round((o.bgOpacity == null ? 0.88 : o.bgOpacity) * 100), 0, 100, "%", "pct");
@@ -1023,28 +1145,32 @@
           kNum("Width", "lineW", o.lineW, 1, 40) + kNum("Pin size", "f", o.f, 6, 80) + colorRow("accent", o.accent));
       }
       if (o.type === "shiptag") {
-        h += group("Tag", kText("Label", "label", o.label) + colorRow("accent", o.accent) +
+        h += group("Tag", kText("Name", "label", o.label) + kAlign(o) +
+          kArea("Details", "detail", o.detail || "", "e.g. Bulk carrier\nIMO 9341287") +
+          '<p class="layers-hint" style="margin:2px 0 8px;font-size:11.5px;line-height:1.45;color:var(--text-3,#7f8ea3)">Optional. Each line adds a row under the name — vessel type, IMO, flag, MMSI…</p>' +
+          colorRow("accent", o.accent) +
           kSlider("Opacity", "bgOpacity", Math.round((o.bgOpacity == null ? 0.92 : o.bgOpacity) * 100), 0, 100, "%", "pct") + kNum("Text size", "f", o.f, 6, 80));
         var tl = kSeg("Leader", "leaderShow", [[true, "On"], [false, "Off"]], o.leaderShow !== false);
-        if (o.leaderShow !== false) tl += kSlider("Angle", "leaderAngle", Math.round(o.leaderAngle || 0), 0, 359, "°") + kNum("Length", "leaderLen", Math.round(o.leaderLen || 0), 0, 4000) +
-          kSeg("End", "leaderEnd", [["none", "None"], ["dot", "Dot"], ["ring", "Ring"]], o.leaderEnd || "ring");
+        if (o.leaderShow !== false) tl += kSlider("Angle", "leaderAngle", o.leaderAngle || 0, 0, 360, "°", "num", 1, true) + kNum("Length", "leaderLen", Math.round(o.leaderLen || 0), 0, 4000) +
+          kEnd(o, "ring") + kNum("Thickness", "leaderW", Math.round(leaderWidth(o) * 10) / 10, 0.5, 40, 0.5) + '<p class="layers-hint" style="margin:6px 0 6px;font-size:11.5px;line-height:1.45;color:var(--text-3,#7f8ea3)">Line colour</p>' + colorRow("leaderColor", leaderColor(o));
         h += group("Leader line", tl);
       } else if (o.type === "distance") {
         h += group("Distance", kText("Label", "label", o.label, "e.g. 12.4 km") + kSeg("Ends", "ends", [["none", "None"], ["dot", "Dot"], ["tick", "Tick"]], o.ends || "none") +
-          '<p class="layers-hint" style="margin:2px 0 6px">Stretch to length, then use the rotate handle to aim it.</p>' +
+          '<p class="layers-hint" style="margin:2px 0 8px;font-size:11.5px;line-height:1.45;color:var(--text-3,#7f8ea3)">Stretch to length, then use the rotate handle to aim it.</p>' +
           colorRow("color", o.color) + kNum("Size", "f", o.f, 6, 80));
       } else if (o.type === "aoi") {
         h += group("Area", kText("Tab label", "label", o.label, "leave empty to hide") + kSeg("Line", "dashed", [[true, "Dashed"], [false, "Solid"]], o.dashed !== false) +
           kSlider("Fill", "fill", Math.round((o.fill || 0) * 100), 0, 60, "%", "pct") + colorRow("color", o.color) + kNum("Size", "f", o.f, 6, 80));
       } else if (o.type === "poipin") {
-        h += group("Pin", kText("Name", "title", o.title) + kText("Detail", "subtitle", o.subtitle, "e.g. coordinates") +
+        h += group("Pin", kText("Name", "title", o.title) + kText("Detail", "subtitle", o.subtitle, "e.g. coordinates") + kAlign(o) +
           kSeg("Card", "card", [[true, "On"], [false, "Off"]], o.card !== false) + colorRow("accent", o.accent) + kNum("Size", "f", o.f, 6, 80));
       } else if (o.type === "zonelabel") {
-        h += group("Zone", kText("Kicker", "kicker", o.kicker, "optional") + kText("Name", "name", o.name) + kText("Badge", "badge", o.badge, "optional") +
+        h += group("Zone", kText("Kicker", "kicker", o.kicker, "optional") + kText("Name", "name", o.name) + kText("Badge", "badge", o.badge, "optional") + kAlign(o) +
           colorRow("accent", o.accent) + kNum("Size", "f", o.f, 6, 80));
       } else if (o.type === "placelabel") {
         h += group("Place", kText("Name", "name", o.name) + kText("Second line", "sub", o.sub, "optional") +
-          kSeg("Align", "align", [["left", "Left"], ["center", "Centre"]], o.align || "center") + colorRow("color", o.color) + kNum("Size", "f", o.f, 6, 120));
+          kAlign({ align: o.align === "left" || o.align === "right" ? o.align : "center" }) + colorRow("color", o.color) + kNum("Size", "f", o.f, 6, 120));
+
       } else if (o.type === "stamp2") {
         h += group("Timestamp", kText("Label", "kicker", o.kicker, "optional") + kText("Date & time", "value", o.value) +
           '<div class="prop-row"><button class="view-btn" data-kact="now" style="flex:1">' + Icons.svg("clock", { size: 14 }) + "Set to now (UTC)</button></div>" + kNum("Size", "f", o.f, 6, 80));
@@ -1062,10 +1188,18 @@
         var brands = Store.getBrandAssets();
         var logoSel = '<div class="prop-row"><label>Logo</label><div class="ctrl"><select class="select" data-klogo="1"><option value="">None</option>' +
           brands.map(function (a) { return '<option value="' + a.id + '"' + (o.logoId === a.id ? " selected" : "") + ">" + esc(a.name) + "</option>"; }).join("") +
-          "</select></div></div>" + (brands.length ? "" : '<p class="layers-hint" style="margin:2px 0 6px">Add your logo in the Brand tab to use it here.</p>');
+          "</select></div></div>" + (brands.length ? "" : '<p class="layers-hint" style="margin:2px 0 8px;font-size:11.5px;line-height:1.45;color:var(--text-3,#7f8ea3)">Add your logo in the Brand tab to use it here.</p>');
+        var ic = kSeg("Icon", "showIcon", [[true, "On"], [false, "Off"]], !!o.showIcon);
+        if (o.showIcon) ic += '<div class="lib-search" style="padding:0;background:none;border:none;margin-top:2px"><span class="lib-search-ic">' + Icons.svg("search", { size: 14 }) + "</span>" +
+          '<input id="labelIconSearch" class="lib-search-input" type="text" placeholder="Search icons…" value=""></div>' +
+          '<div class="lib-grid" id="labelIconGrid" style="padding:8px 0 0"></div>' +
+          kNum("Size", "iconSize", o.iconSize > 0 ? o.iconSize : Math.round(o.f * 1.9), 8, 400) + colorRow("iconColor", o.iconColor || "#ffffff");
         h += group("Footer", kText("Title", "title", o.title) + kText("Subtitle", "subtitle", o.subtitle, "optional") + logoSel +
-          colorRow("accent", o.accent) + kSlider("Opacity", "bgOpacity", Math.round((o.bgOpacity == null ? 0.96 : o.bgOpacity) * 100), 0, 100, "%", "pct") + kNum("Size", "f", o.f, 6, 80));
+          colorRow("accent", o.accent) + kSlider("Opacity", "bgOpacity", Math.round((o.bgOpacity == null ? 0.96 : o.bgOpacity) * 100), 0, 100, "%", "pct") + kNum("Text size", "f", o.f, 6, 80) +
+          '<p class="layers-hint" style="margin:2px 0 8px;font-size:11.5px;line-height:1.45;color:var(--text-3,#7f8ea3)">Set the strap’s height with its handles or the Height field.</p>');
+        h += group("Icon", ic);
       }
+      if (HAS_SHADOW[o.type]) h += group("Shadow", kSlider("Opacity", "shadowOpacity", Math.round(shMul(o) * 100), 0, 100, "%", "pct"));
       return h;
     }
 
@@ -1073,11 +1207,20 @@
     function wire(panel, o) {
       panel.querySelectorAll("[data-kprop]").forEach(function (inp) {
         var key = inp.getAttribute("data-kprop"), kind = inp.getAttribute("data-ktype") || "text";
-        var ev = (inp.type === "range" || inp.type === "text" || inp.tagName === "TEXTAREA") ? "input" : "change";
-        inp.addEventListener(ev, function () {
+        var isNumField = inp.type === "number";
+        var ev = (inp.type === "range" || inp.type === "text" || inp.tagName === "TEXTAREA" || isNumField) ? "input" : "change";
+        function apply(commit) {
           var ob = getSel(); if (!ob) return;
           var v = inp.value;
-          if (kind === "num") { v = +v; if (isNaN(v)) return; }
+          if (kind === "num") {
+            if (inp.value === "") return;
+            v = +v; if (isNaN(v)) return;
+            if (isNumField) {
+              var mn = inp.min === "" ? -Infinity : +inp.min, mx = inp.max === "" ? Infinity : +inp.max;
+              if (v < mn || v > mx) { if (!commit) return; v = Math.min(mx, Math.max(mn, v)); inp.value = v; }
+              if (v === ob[key]) return;
+            }
+          }
           if (kind === "pct") v = +v / 100;
           if (key === "f" && (ob.type === "callout" || ob.type === "scalebar" || ob.type === "distance") && ob.f && v > 0) {
             var k = v / ob.f; ob.w = Math.round(ob.w * k); if (ob.leaderLen) ob.leaderLen = Math.round(ob.leaderLen * k); if (ob.radius) ob.radius = Math.round(ob.radius * k);
@@ -1087,13 +1230,20 @@
           refresh(ob, false);
           var pw = panel.querySelector('[data-prop="w"]'); if (pw) pw.value = Math.round(ob.w);
           var ph = panel.querySelector('[data-prop="h"]'); if (ph) ph.value = Math.round(ob.h);
-        });
+          panel.querySelectorAll('[data-kprop="' + key + '"]').forEach(function (other) {   // slider ⇄ number box
+            if (other === inp || other.tagName === "TEXTAREA" || other.type === "text") return;
+            if (kind === "num") other.value = other.type === "number" ? Math.round(ob[key] * 10) / 10 : ob[key];
+          });
+        }
+        inp.addEventListener(ev, function () { apply(false); });
+        if (isNumField) inp.addEventListener("change", function () { apply(true); });
         inp.addEventListener("change", function () { pushHistory(); markDirty(); renderLayers(); });
       });
       panel.querySelectorAll("[data-kseg]").forEach(function (b) {
         b.addEventListener("click", function () {
           var ob = getSel(); if (!ob) return;
           ob[b.getAttribute("data-kseg")] = JSON.parse(b.getAttribute("data-kval"));
+          if (b.getAttribute("data-kseg") === "showIcon" && ob.showIcon && !ob.iconKey) ob.iconKey = "Ship";
           if (b.getAttribute("data-kseg") === "media" && ob.media === "upload" && !ob.image) { pick(ob); }
           refresh(ob, true); pushHistory(); renderLayers();
         });
@@ -1154,7 +1304,7 @@
       inp.click();
     }
 
-    return { has: has, init: init, fit: fit, autoH: autoH, autoSize: autoSize, place: place, heightFor: heightFor, svg: svg, contentHTML: contentHTML, draw: draw,
+    return { has: has, init: init, fit: fit, mediaResize: mediaResize, autoH: autoH, autoSize: autoSize, heightScaled: heightScaled, minHeight: minHeight, editSize: editSize, place: place, heightFor: heightFor, svg: svg, contentHTML: contentHTML, draw: draw,
              icon: icon, label: label, libHTML: libHTML, props: props, wire: wire };
   })();
 
@@ -1224,7 +1374,7 @@
     var textStyle = "color:" + o.color + ";font-family:'" + o.font + "';font-size:" + o.fontSize + "px;" +
       "font-weight:" + o.fontWeight + ";text-align:" + o.align + ";" +
       (o.italic ? "font-style:italic;" : "") + (o.underline ? "text-decoration:underline;" : "") +
-      (o.shadow ? "text-shadow:0 2px 6px rgba(0,0,0,.7);" : "") + "line-height:1.2;";
+      (o.shadow ? "text-shadow:0 2px 6px rgba(0,0,0," + shA(o, 0.7) + ");" : "") + "line-height:1.2;";
     var textEl = '<div class="obj-text" style="' + textStyle + '">' + UI.escapeHtml(o.text) + "</div>";
     if ((o.type === "label" || o.type === "caption") && o.iconSide && o.iconKey) {
       var isz = Math.round(o.fontSize * 1.15);
@@ -1303,7 +1453,7 @@
     if (cs === "transparent") { /* no bg */ }
     else if (cs === "outline") { st += "background:transparent;border:" + Math.max(2, o.borderWidth || 2) + "px " + cssBorderStyle(o) + " " + bdc + ";border-radius:" + o.radius + "px;"; }
     else { st += "background:" + bgc + ";border-radius:" + (cs === "rounded" || cs === "bubble" || cs === "callout" ? Math.max(o.radius, 12) : o.radius) + "px;"; if (o.borderWidth) st += "border:" + o.borderWidth + "px " + cssBorderStyle(o) + " " + bdc + ";"; }
-    if (o.dropShadow) st += "box-shadow:0 " + Math.round(o.h * 0.14 + 3) + "px " + Math.round(o.h * 0.34 + 8) + "px rgba(0,0,0,0.45);";
+    if (o.dropShadow) st += "box-shadow:0 " + Math.round(o.h * 0.14 + 3) + "px " + Math.round(o.h * 0.34 + 8) + "px rgba(0,0,0," + shA(o, 0.45) + ");";
     return st;
   }
 
@@ -1367,6 +1517,8 @@
   }
 
   // Drop-shadow geometry shared by DOM render and canvas export (shapes).
+  // Shadow strength: the original alpha scaled by the component's Shadow opacity (default 100%).
+  function shA(o, base) { var m = o.shadowOpacity == null ? 1 : Math.max(0, Math.min(1, +o.shadowOpacity)); return Math.round(base * m * 1000) / 1000; }
   function shadowParams(o) {
     var m = Math.min(o.w, o.h);
     return { blur: Math.max(3, Math.round(m * 0.06 + 4)), dy: Math.max(2, Math.round(m * 0.045 + 2)) };
@@ -1374,7 +1526,7 @@
   function shapeShadowCss(o) {
     if (!o.dropShadow) return "";
     var sp = shadowParams(o);
-    return "filter:drop-shadow(0 " + sp.dy + "px " + sp.blur + "px rgba(0,0,0,0.5));";
+    return "filter:drop-shadow(0 " + sp.dy + "px " + sp.blur + "px rgba(0,0,0," + shA(o, 0.5) + "));";
   }
   /* ---- stroke style (solid / dashed / dotted) shared by render + export ---- */
   // SVG dash pattern scaled to stroke width. Dotted uses a ~zero dash with round
@@ -1420,12 +1572,35 @@
     return "rgba(" + r + "," + g + "," + b + "," + (op == null ? 1 : op) + ")";
   }
   // Title-bar geometry derived from height, shared by DOM render + export.
+  // Logo height (clamped to the bar) and width (from the logo's own aspect ratio).
+  function tbLogoH(o) { return o.logoSize ? clamp(o.logoSize, 8, Math.max(8, o.h - 4)) : Math.round(o.h * 0.58); }
+  function tbLogoW(o) {
+    var hh = tbLogoH(o);
+    if (o.logo && !o.logoAspect && !tbAspPending[o.logo]) {   // older bars: measure the logo once
+      tbAspPending[o.logo] = true; var im = new Image();
+      im.onload = function () { o.logoAspect = (im.naturalWidth || 1) / (im.naturalHeight || 1); renderObjects(); wireObjectEvents(); };
+      im.src = o.logo;
+    }
+    return (o.logo && o.logoAspect) ? Math.max(8, Math.round(hh * o.logoAspect)) : hh;
+  }
+  var tbAspPending = {};
+  // Make room for the logo: grow the bar's height for a taller logo and its width so the
+  // title/subtitle keep their space. Text sizes are frozen first so they don't change.
+  function tbFitLogo(ob) {
+    if (!ob || ob.type !== "titlebar" || !ob.showLogo) return;
+    var tm = tbMetrics(ob); if (!ob.titleSize) ob.titleSize = tm.titleSize; if (!ob.subSize) ob.subSize = tm.subSize;
+    if (ob.logoSize && ob.logoSize + 8 > ob.h) { var gh = ob.logoSize + 8 - ob.h; ob.y -= Math.round(gh / 2); ob.h += gh; }
+    var m = tbMetrics(ob);
+    var textNeed = Math.max(measureTextW(ob.title, 700, m.titleSize, ob.titleFont || ob.font), ob.subtitle ? measureTextW(ob.subtitle, 500, m.subSize, ob.subtitleFont || ob.font) : 0);
+    var need = Math.ceil(m.pad * 2 + m.logoW + m.gap + textNeed + 4);
+    if (ob.w < need) { var gw = need - ob.w; ob.x -= Math.round(gw / 2); ob.w = need; }
+  }
   function tbMetrics(o) {
     var h = o.h;
     return {
       pad: Math.max(10, Math.round(h * 0.18)),
       gap: Math.max(8, Math.round(h * 0.14)),
-      logoSize: o.logoSize ? clamp(o.logoSize, 8, Math.max(8, o.h - 4)) : Math.round(h * 0.58),
+      logoSize: tbLogoH(o), logoW: tbLogoW(o),
       titleSize: o.titleSize ? clamp(o.titleSize, 8, 200) : clamp(Math.round(h * 0.34), 11, 80),
       subSize: o.subSize ? clamp(o.subSize, 8, 200) : clamp(Math.round(h * 0.2), 9, 48)
     };
@@ -1523,7 +1698,7 @@
     return "width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:" + ai +
       ";gap:" + Math.round((o.bodySize || 14) * 0.35) + "px;padding:" + pad + "px;overflow:hidden;" +
       "background:" + hexRgba(o.bg, o.bgOpacity == null ? 1 : o.bgOpacity) + ";border:" + bd + ";border-radius:" + o.radius + "px;" +
-      (o.dropShadow ? "box-shadow:0 " + Math.round(o.h * 0.14 + 3) + "px " + Math.round(o.h * 0.34 + 8) + "px rgba(0,0,0,0.45);" : "");
+      (o.dropShadow ? "box-shadow:0 " + Math.round(o.h * 0.14 + 3) + "px " + Math.round(o.h * 0.34 + 8) + "px rgba(0,0,0," + shA(o, 0.45) + ");" : "");
   }
   function tbxInnerHTML(o) {
     return TBX_FIELDS.map(function (f) {
@@ -1599,7 +1774,7 @@
   function tbInnerHTML(o) {
     var m = tbMetrics(o);
     var logo = !o.showLogo ? "" : (o.logo
-      ? '<img src="' + o.logo + '" draggable="false" style="width:' + m.logoSize + 'px;height:' + m.logoSize + 'px;object-fit:contain;flex:0 0 auto;border-radius:' + Math.round(m.logoSize * 0.16) + 'px">'
+      ? '<img src="' + o.logo + '" draggable="false" style="width:' + m.logoW + 'px;height:' + m.logoSize + 'px;object-fit:contain;flex:0 0 auto;border-radius:' + Math.round(m.logoSize * 0.16) + 'px">'
       : '<div style="width:' + m.logoSize + 'px;height:' + m.logoSize + 'px;flex:0 0 auto;border-radius:' + Math.round(m.logoSize * 0.22) + 'px;background:linear-gradient(140deg,#00AEEF,#0066a8);display:flex;align-items:center;justify-content:center;color:#fff">' + Icons.svg("tag", { size: Math.round(m.logoSize * 0.58), stroke: "#fff" }) + "</div>");
     return '<div class="tb-text" style="min-width:0;flex:1 1 auto">' +
         '<div class="tb-title" style="color:' + o.color + ";font-family:'" + (o.titleFont || o.font) + "';font-weight:700;font-size:" + m.titleSize + 'px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + UI.escapeHtml(o.title) + "</div>" +
@@ -2072,11 +2247,16 @@
       '<button class="view-btn" data-act="duplicate" style="flex:1">' + Icons.svg("copy", { size: 14 }) + "Duplicate</button>" +
       '<button class="view-btn" data-act="delete" style="flex:1;color:var(--danger)">' + Icons.svg("trash", { size: 14 }) + "Delete</button></div></div>";
 
+    if (!Kit.has(o.type) && (o.dropShadow || o.shadow)) {
+      var shRow = sliderRow("Shadow opacity", "shadowOpacity", Math.round((o.shadowOpacity == null ? 1 : o.shadowOpacity) * 100), 0, 100, "%");
+      var dsRe = /(<div class="prop-row"><label>Drop shadow<\/label>[\s\S]*?<\/button><\/div><\/div>)/;
+      html = dsRe.test(html) ? html.replace(dsRe, "$1" + shRow) : html.replace(/(<\/div>)$/, shRow + "$1");
+    }
     panel.innerHTML = html;
     UI.hydrateIcons(panel);
     wirePropEvents(panel, o);
     if (Kit.has(o.type)) Kit.wire(panel, o);
-    if (o.type === "label" && o.iconSide) renderLabelIconPicker(o);
+    if ((o.type === "label" && o.iconSide) || (o.type === "footer" && o.showIcon)) renderLabelIconPicker(o);
   }
 
   // Compact searchable Lucide picker inside a label's Icon property group.
@@ -2154,7 +2334,17 @@
         else ob[prop] = v;
         if (prop === "text" || prop === "fontSize" || prop === "font") fitTextBox(ob);
         if (ob.type === "legend") fitLegend(ob);
-        if (Kit.has(ob.type)) Kit.fit(ob);
+        if (ob.type === "titlebar" && prop === "logoSize") {
+          tbFitLogo(ob);
+          var thIn = panel.querySelector('[data-prop="h"]'); if (thIn) thIn.value = Math.round(ob.h);
+          var twIn = panel.querySelector('[data-prop="w"]'); if (twIn) twIn.value = Math.round(ob.w);
+        }
+        if (Kit.has(ob.type)) {
+          Kit.editSize(ob, prop); Kit.fit(ob);
+          if (prop === "w" || prop === "h") input.value = Math.round(ob[prop]);
+          var fIn = panel.querySelector('[data-kprop="f"]'); if (fIn) fIn.value = ob.f;
+          var oIn = panel.querySelector('[data-prop="' + (prop === "w" ? "h" : "w") + '"]'); if (oIn) oIn.value = Math.round(prop === "w" ? ob.h : ob.w);
+        }
         renderObjects(); wireObjectEvents();
         if (!/opacity$/i.test(prop) && ev === "change") { pushHistory(); markDirty(); renderLayers(); if (prop === "borderWidth" || prop === "captionStyle" || prop === "arrowHead") renderProps(); }
         else markDirty();
@@ -2670,6 +2860,7 @@
       item.addEventListener("click", function () { addFromItem(item, null); });
       // drag to drop
       item.addEventListener("dragstart", function (e) {
+        lastDragItem = item;
         var payload = { kind: item.getAttribute("data-kind"), text: item.getAttribute("data-text"), icon: item.getAttribute("data-icon"), shape: item.getAttribute("data-shape"), variant: item.getAttribute("data-variant"), iconSide: item.getAttribute("data-iconside"), iconKey: item.getAttribute("data-iconkey"), wmStyle: item.getAttribute("data-wmstyle") };
         e.dataTransfer.setData("text/plain", JSON.stringify(payload));
         e.dataTransfer.effectAllowed = "copy";
@@ -2680,6 +2871,7 @@
   }
   function addFromItem(item, atImage) {
     var kind = item.getAttribute("data-kind");
+    recordRecent(item);
     if (kind === "tracktool") { setDrawMode(!(drawMode && drawKind === "track"), "track"); return; }
     if (kind === "kit") { addObject("kit", { variant: item.getAttribute("data-variant") }, atImage); return; }
     if (kind === "polytool") { setDrawMode(!(drawMode && drawKind === "polygon"), "polygon"); return; }
@@ -2708,6 +2900,7 @@
     }
     var raw = e.dataTransfer.getData("text/plain"); if (!raw) return;
     var p; try { p = JSON.parse(raw); } catch (_) { return; }
+    if (lastDragItem && p && p.kind) { recordRecent(lastDragItem); lastDragItem = null; }
     if (p.kind === "kit") addObject("kit", { variant: p.variant }, at);
     else if (p.kind === "icon") addObject("icon", { iconKey: p.icon }, at);
     else if (p.kind === "shape" || p.kind === "arrow") addObject(p.kind, { shapeKind: p.shape }, at);
@@ -2779,11 +2972,12 @@
       var g = (S.guides && movers.length === 1) ? applyGuides(o, pnx, pny) : { x: pnx, y: pny };
       var adx = Math.round(g.x) - origs[0].x, ady = Math.round(g.y) - origs[0].y;
       origs.forEach(function (rec) { rec.o.x = rec.x + adx; rec.o.y = rec.y + ady; updateObjEl(rec.o); });
+      showEdgeGuides(movers);
       moved = true;
     }
     function up() {
       document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up);
-      clearGuides(); drag = null;
+      clearGuides(); clearEdgeGuides(); drag = null;
       if (moved) { pushHistory(); markDirty(); }
     }
     document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
@@ -2811,18 +3005,23 @@
       if (keepAspect && editW && editH) { var ratio = w0 / h0; if (nw / nh > ratio) nw = nh * ratio; else nh = nw / ratio; }
       if (S.snap) { nw = Math.max(12, snap(nw)); nh = Math.max(12, snap(nh)); }
       if (Kit.autoSize(o)) { o.f = Math.max(5, Math.round(f0 * (editW ? nw / w0 : nh / h0))); Kit.fit(o); nw = o.w; nh = o.h; }
+      if (Kit.heightScaled(o) && editH) o.f = Math.max(5, Math.round(f0 * nh / h0));
+      if (editH && Kit.minHeight(o) && nh < Kit.minHeight(o)) nh = Kit.minHeight(o);
+      if (editH) Kit.mediaResize(o, nw, nh);
       if (Kit.autoH(o)) { var _w0 = o.w; o.w = Math.round(nw); nh = Kit.heightFor(o); o.w = _w0; }
       var sgnX = dir[0] > 0 ? 1 : (dir[0] < 0 ? -1 : 0);
       var sgnY = dir[1] > 0 ? 1 : (dir[1] < 0 ? -1 : 0);
       var nc = { x: anchor.x + ux.x * (sgnX * nw / 2) + uy.x * (sgnY * nh / 2), y: anchor.y + ux.y * (sgnX * nw / 2) + uy.y * (sgnY * nh / 2) };
       o.w = Math.round(nw); o.h = Math.round(nh);
       o.x = Math.round(nc.x - nw / 2); o.y = Math.round(nc.y - nh / 2);
+      snapResizeToEdges(o, dir, keepAspect);
       updateObjEl(o);
       // live update size fields
       var pw = $("propsPanel").querySelector('[data-prop="w"]'); if (pw) pw.value = o.w;
       var ph = $("propsPanel").querySelector('[data-prop="h"]'); if (ph) ph.value = o.h;
+      showEdgeGuides([o]);
     }
-    function up() { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); drag = null; pushHistory(); markDirty(); }
+    function up() { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); clearEdgeGuides(); drag = null; pushHistory(); markDirty(); }
     document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
   }
 
@@ -2837,8 +3036,9 @@
       o.rot = Math.round(ang);
       updateObjEl(o);
       var pr = $("propsPanel").querySelector('[data-prop="rot"]'); if (pr) pr.value = o.rot;
+      showEdgeGuides([o]);
     }
-    function up() { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); drag = null; pushHistory(); markDirty(); }
+    function up() { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); clearEdgeGuides(); drag = null; pushHistory(); markDirty(); }
     document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
   }
 
@@ -2999,8 +3199,8 @@
     inp.type = "file"; inp.accept = "image/png,image/jpeg,image/jpg,image/webp,image/svg+xml";
     inp.onchange = function () {
       var f = inp.files && inp.files[0]; if (!f) return;
-      UI.fileToImage(f, 256, function (im) {
-        o.logo = im.src; renderObjects(); wireObjectEvents(); renderProps(); pushHistory(); markDirty();
+      UI.fileToImage(f, 800, function (im) {
+        o.logo = im.src; o.logoAspect = (im.w || 1) / (im.h || 1); tbFitLogo(o); renderObjects(); wireObjectEvents(); renderProps(); pushHistory(); markDirty();
         UI.toast({ type: "success", title: "Logo added", duration: 1400 });
       });
     };
@@ -3546,7 +3746,7 @@
         : '<svg xmlns="http://www.w3.org/2000/svg" width="' + o.w + '" height="' + o.h + '">' + (o.type === "shape" ? shapeInner(o) : (o.type === "polygon" ? polygonInner(o) : (o.type === "polyline" ? polylineInner(o) : (o.type === "watermark" ? watermarkInner(o) : arrowInner(o))))) + "</svg>";
       var img = new Image();
       img.onload = function () {
-        if ((o.type === "shape" || o.type === "polygon" || o.type === "arrow") && o.dropShadow) { var sp = shadowParams(o); ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = sp.blur; ctx.shadowOffsetY = sp.dy; }
+        if ((o.type === "shape" || o.type === "polygon" || o.type === "arrow") && o.dropShadow) { var sp = shadowParams(o); ctx.shadowColor = "rgba(0,0,0," + shA(o, 0.5) + ")"; ctx.shadowBlur = sp.blur; ctx.shadowOffsetY = sp.dy; }
         if (o.type === "arrow" && (o.flipX || o.flipY)) {
           var cxf = x + o.w / 2, cyf = y + o.h / 2;
           ctx.translate(cxf, cyf); ctx.scale(o.flipX ? -1 : 1, o.flipY ? -1 : 1); ctx.translate(-cxf, -cyf);
@@ -3591,7 +3791,7 @@
 
   function drawTextbox(ctx, o, x, y) {
     var r = Math.min(o.radius, o.w / 2, o.h / 2);
-    if (o.dropShadow) { ctx.save(); ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = Math.round(o.h * 0.34 + 8); ctx.shadowOffsetY = Math.round(o.h * 0.14 + 3); }
+    if (o.dropShadow) { ctx.save(); ctx.shadowColor = "rgba(0,0,0," + shA(o, 0.45) + ")"; ctx.shadowBlur = Math.round(o.h * 0.34 + 8); ctx.shadowOffsetY = Math.round(o.h * 0.14 + 3); }
     if (o.bg && o.bg !== "transparent") { ctx.fillStyle = hexRgba(o.bg, o.bgOpacity == null ? 1 : o.bgOpacity); roundRect(ctx, x, y, o.w, o.h, r); ctx.fill(); }
     if (o.dropShadow) ctx.restore();
     if (o.borderWidth) { ctx.strokeStyle = hexRgba(o.borderColor, o.borderOpacity); ctx.lineWidth = o.borderWidth; applyCanvasDash(ctx, o, o.borderWidth); roundRect(ctx, x, y, o.w, o.h, r); ctx.stroke(); ctx.setLineDash([]); }
@@ -3713,7 +3913,7 @@
       // Drop shadow: cast from a filled rounded rect behind the (opaque) image.
       if (o.dropShadow) {
         var sp = shadowParams(o);
-        ctx.save(); ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = sp.blur; ctx.shadowOffsetY = sp.dy;
+        ctx.save(); ctx.shadowColor = "rgba(0,0,0," + shA(o, 0.5) + ")"; ctx.shadowBlur = sp.blur; ctx.shadowOffsetY = sp.dy;
         ctx.fillStyle = "#000"; roundRect(ctx, x, y, o.w, o.h, r); ctx.fill(); ctx.restore();
       }
       ctx.save(); roundRect(ctx, x, y, o.w, o.h, r); ctx.clip();
@@ -3744,7 +3944,7 @@
     function drawText() {
       var tx = x + m.pad;
       ctx.save();
-      var textW = o.showLogo ? (o.w - m.pad * 2 - m.logoSize - m.gap) : (o.w - m.pad * 2);
+      var textW = o.showLogo ? (o.w - m.pad * 2 - m.logoW - m.gap) : (o.w - m.pad * 2);
       ctx.beginPath(); ctx.rect(x + m.pad, y, Math.max(0, textW), o.h); ctx.clip();
       ctx.textAlign = "left"; ctx.fillStyle = o.color;
       var cyc = y + o.h / 2;
@@ -3766,16 +3966,16 @@
       cb();
     }
     if (!o.showLogo) { drawText(); return; }
-    var lx = x + o.w - m.pad - m.logoSize, ly = y + (o.h - m.logoSize) / 2, lr = Math.round(m.logoSize * (o.logo ? 0.16 : 0.22));
+    var lx = x + o.w - m.pad - m.logoW, ly = y + (o.h - m.logoSize) / 2, lr = Math.round(m.logoSize * (o.logo ? 0.16 : 0.22));
     if (o.logo) {
       var img = new Image();
       img.onload = function () {
-        ctx.save(); roundRect(ctx, lx, ly, m.logoSize, m.logoSize, lr); ctx.clip();
+        ctx.save(); roundRect(ctx, lx, ly, m.logoW, m.logoSize, lr); ctx.clip();
         // contain (preserve aspect ratio) within the square logo box
         var iw = img.naturalWidth || m.logoSize, ih = img.naturalHeight || m.logoSize;
-        var scale = Math.min(m.logoSize / iw, m.logoSize / ih);
+        var scale = Math.min(m.logoW / iw, m.logoSize / ih);
         var dw = iw * scale, dh = ih * scale;
-        ctx.drawImage(img, lx + (m.logoSize - dw) / 2, ly + (m.logoSize - dh) / 2, dw, dh);
+        ctx.drawImage(img, lx + (m.logoW - dw) / 2, ly + (m.logoSize - dh) / 2, dw, dh);
         ctx.restore(); drawText();
       };
       img.onerror = function () { drawText(); };
@@ -3797,7 +3997,7 @@
     cb = cb || function () {};
     var cs = o.captionStyle, r = (cs === "rounded" || cs === "bubble" || cs === "callout") ? Math.max(o.radius, 12) : o.radius;
     if (cs !== "transparent" && cs !== "leader") {
-      if (o.dropShadow) { ctx.save(); ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = Math.round(o.h * 0.34 + 8); ctx.shadowOffsetY = Math.round(o.h * 0.14 + 3); }
+      if (o.dropShadow) { ctx.save(); ctx.shadowColor = "rgba(0,0,0," + shA(o, 0.45) + ")"; ctx.shadowBlur = Math.round(o.h * 0.34 + 8); ctx.shadowOffsetY = Math.round(o.h * 0.14 + 3); }
       var _bgc = hexRgba(o.bg, o.bgOpacity == null ? 1 : o.bgOpacity);
       var _bdc = hexRgba(o.borderColor, o.borderOpacity == null ? 1 : o.borderOpacity);
       if (cs === "outline") { ctx.strokeStyle = _bdc; ctx.lineWidth = Math.max(2, o.borderWidth); applyCanvasDash(ctx, o, Math.max(2, o.borderWidth)); roundRect(ctx, x, y, o.w, o.h, r); ctx.stroke(); ctx.setLineDash([]); }
@@ -3820,10 +4020,11 @@
       ctx.fillStyle = o.color;
       ctx.font = (o.italic ? "italic " : "") + o.fontWeight + " " + o.fontSize + "px '" + o.font + "', sans-serif";
       ctx.textBaseline = "middle"; ctx.textAlign = "left";
-      if (o.shadow) { ctx.shadowColor = "rgba(0,0,0,.7)"; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2; }
+      if (o.shadow) { ctx.shadowColor = "rgba(0,0,0," + shA(o, 0.7) + ")"; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2; }
       var tw = ctx.measureText(o.text).width;
       var isz = Math.round(o.fontSize * 1.15), gap = Math.round(o.fontSize * 0.45);
-      var gw = isz + gap + tw, gx = x + (o.w - gw) / 2, cyc = y + o.h / 2;
+      var gw = isz + gap + tw, lpad = Math.round(o.fontSize * 0.7), cyc = y + o.h / 2;
+      var gx = o.align === "left" ? x + lpad : (o.align === "right" ? x + o.w - lpad - gw : x + (o.w - gw) / 2);
       var iconX = (o.iconSide === "left") ? gx : gx + tw + gap;
       var textX = (o.iconSide === "left") ? gx + isz + gap : gx;
       ctx.fillText(o.text, textX, cyc);
@@ -3839,7 +4040,7 @@
     ctx.fillStyle = o.color;
     ctx.font = (o.italic ? "italic " : "") + o.fontWeight + " " + o.fontSize + "px '" + o.font + "', sans-serif";
     ctx.textBaseline = "middle";
-    if (o.shadow) { ctx.shadowColor = "rgba(0,0,0,.7)"; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2; }
+    if (o.shadow) { ctx.shadowColor = "rgba(0,0,0," + shA(o, 0.7) + ")"; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2; }
     var padX = Math.round(o.fontSize * 0.7);
     var lines = wrapText(ctx, o.text, o.w - padX * 2);
     var lh = o.fontSize * 1.2;
@@ -3918,6 +4119,42 @@
     var g = document.createElement("div"); g.className = "guide " + type;
     if (type === "v") g.style.left = pos + "px"; else g.style.top = pos + "px";
     stage.appendChild(g); guideEls.push(g);
+  }
+
+  /* ---- Edge guides: a red line on any image edge a component touches while moving/resizing ---- */
+  var edgeEls = [], edgeTimer = null;
+  function clearEdgeGuides() { edgeEls.forEach(function (g) { g.remove(); }); edgeEls = []; }
+  function objBounds(o) {   // axis-aligned bounds of the (possibly rotated) component box
+    var a = (o.rot || 0) * Math.PI / 180, c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a));
+    var cx = o.x + o.w / 2, cy = o.y + o.h / 2, hw = (o.w * c + o.h * s) / 2, hh = (o.w * s + o.h * c) / 2;
+    return { l: cx - hw, t: cy - hh, r: cx + hw, b: cy + hh };
+  }
+  function showEdgeGuides(objs) {
+    clearEdgeGuides();
+    if (!image || !stage || !objs || !objs.length) return;
+    var L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
+    objs.forEach(function (o) { var bb = objBounds(o); L = Math.min(L, bb.l); T = Math.min(T, bb.t); R = Math.max(R, bb.r); B = Math.max(B, bb.b); });
+    var tol = Math.max(0.75, 1 / (S.zoom || 1));
+    // touching (within a hair) or reaching past the edge both count as touching it
+    if (L <= tol) addEdgeGuide("l"); if (R >= image.w - tol) addEdgeGuide("r");
+    if (T <= tol) addEdgeGuide("t"); if (B >= image.h - tol) addEdgeGuide("b");
+  }
+  function addEdgeGuide(side) {
+    var g = document.createElement("div"); g.className = "edge-guide edge-" + side;
+    stage.appendChild(g); edgeEls.push(g);
+  }
+
+  // While resizing, pull the dragged side onto an image edge when it's within a few pixels
+  // (unrotated components whose sides can change independently).
+  function snapResizeToEdges(o, dir, keepAspect) {
+    if (!image || !S.guides || (o.rot || 0) % 360 !== 0 || keepAspect || (Kit.has(o.type) && Kit.autoSize(o))) return;
+    var th = 7 / (S.zoom || 1);
+    if (dir[0] > 0 && Math.abs(o.x + o.w - image.w) < th) o.w = image.w - o.x;
+    if (dir[0] < 0 && Math.abs(o.x) < th) { o.w += o.x; o.x = 0; }
+    if (!(Kit.has(o.type) && Kit.autoH(o))) {
+      if (dir[1] > 0 && Math.abs(o.y + o.h - image.h) < th) o.h = image.h - o.y;
+      if (dir[1] < 0 && Math.abs(o.y) < th) { o.h += o.y; o.y = 0; }
+    }
   }
 
   /* ============================================================
@@ -4119,6 +4356,8 @@
       var ddx = (e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0);
       var ddy = (e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0);
       selectedObjects().forEach(function (o) { if (o.locked) return; o.x += ddx; o.y += ddy; updateObjEl(o); });
+      showEdgeGuides(selectedObjects().filter(function (o) { return !o.locked; }));
+      clearTimeout(edgeTimer); edgeTimer = setTimeout(clearEdgeGuides, 900);
       clearTimeout(dirtyTimer); dirtyTimer = setTimeout(function () { pushHistory(); markDirty(); }, 300);
     }
   });
@@ -4406,7 +4645,157 @@
     });
   }
 
+  /* ---- Properties panel: docked above Layers, or floating anywhere on screen ---- */
+  var DOCK_KEY = "skytek.propsDock";
+  var ICON_UNDOCK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
+  var ICON_DOCK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/><path d="M8 10l2 2-2 2"/></svg>';
+  function wirePropsDock() {
+    var dock = $("propsDock"), rail = $("leftRail"), btn = $("propsUndock"), hideBtn = $("toggleLayers");
+    if (!dock || !btn || !rail) return;
+    var head = dock.querySelector(".props-head"), layersHead = rail.querySelector(".layers-head");
+    var st = {}, saveT = null;
+    try { st = JSON.parse(localStorage.getItem(DOCK_KEY)) || {}; } catch (e) { st = {}; }
+    function save() { try { localStorage.setItem(DOCK_KEY, JSON.stringify(st)); } catch (e) {} }
+    function clampIn() {
+      var vw = window.innerWidth, vh = window.innerHeight;
+      st.w = Math.max(240, Math.min(st.w || 300, vw - 16));
+      st.h = Math.max(200, Math.min(st.h || Math.round(vh * 0.62), vh - 16));
+      st.x = Math.max(8, Math.min(st.x == null ? vw - st.w - 300 : st.x, vw - st.w - 8));
+      st.y = Math.max(8, Math.min(st.y == null ? 72 : st.y, vh - 48));
+    }
+    function place() { dock.style.left = st.x + "px"; dock.style.top = st.y + "px"; dock.style.width = st.w + "px"; dock.style.height = st.h + "px"; }
+    function setFloating(on, persist) {
+      st.floating = !!on;
+      if (on) {
+        clampIn(); document.body.appendChild(dock); dock.classList.add("floating"); place();
+        rail.classList.add("props-out"); if (layersHead && hideBtn) layersHead.appendChild(hideBtn);
+        btn.title = "Dock above Layers"; btn.innerHTML = ICON_DOCK;
+      } else {
+        dock.classList.remove("floating"); dock.removeAttribute("style");
+        rail.insertBefore(dock, layersHead || null); rail.classList.remove("props-out");
+        if (head && hideBtn) head.appendChild(hideBtn);
+        btn.title = "Undock — move anywhere"; btn.innerHTML = ICON_UNDOCK;
+      }
+      if (persist !== false) save();
+    }
+    btn.addEventListener("click", function (e) { e.stopPropagation(); setFloating(!st.floating); });
+    head.addEventListener("dblclick", function (e) { if (e.target.closest("button")) return; setFloating(!st.floating); });
+    head.addEventListener("pointerdown", function (e) {
+      if (!dock.classList.contains("floating") || e.button !== 0 || e.target.closest("button")) return;
+      e.preventDefault();
+      var sx = e.clientX, sy = e.clientY, ox = st.x, oy = st.y;
+      try { head.setPointerCapture(e.pointerId); } catch (x) {}
+      function mv(ev) { st.x = ox + ev.clientX - sx; st.y = oy + ev.clientY - sy; clampIn(); place(); }
+      function up() { head.removeEventListener("pointermove", mv); head.removeEventListener("pointerup", up); head.removeEventListener("pointercancel", up); save(); }
+      head.addEventListener("pointermove", mv); head.addEventListener("pointerup", up); head.addEventListener("pointercancel", up);
+    });
+    if (window.ResizeObserver) new ResizeObserver(function () {   // the corner grip: remember the size
+      if (!dock.classList.contains("floating") || !dock.isConnected || !dock.offsetWidth) return;   // ignore removal on page change
+      st.w = dock.offsetWidth; st.h = dock.offsetHeight; clearTimeout(saveT); saveT = setTimeout(save, 250);
+    }).observe(dock);
+    window.addEventListener("resize", function () { if (st.floating) { clampIn(); place(); } });
+    if (st.floating) setFloating(true, false);
+  }
+
+  /* ---- Recently used: the last 5 library components added (per device) ---- */
+  var RECENT_KEY = "skytek.recentComponents", RECENT_MAX = 5, lastDragItem = null;
+  function readRecent() { try { var r = JSON.parse(localStorage.getItem(RECENT_KEY)); return Array.isArray(r) ? r : []; } catch (e) { return []; } }
+  function recentKey(item) {
+    return Array.prototype.slice.call(item.attributes).filter(function (a) { return a.name.indexOf("data-") === 0 && a.name !== "data-hydrated"; })
+      .map(function (a) { return a.name + "=" + a.value; }).sort().join("&");
+  }
+  function recordRecent(item) {
+    if (!item || !item.getAttribute || !item.getAttribute("data-kind")) return;
+    var clone = item.cloneNode(true); clone.classList.remove("on"); clone.removeAttribute("id"); clone.removeAttribute("data-hydrated");
+    var html = clone.outerHTML;
+    if (!clone.classList.contains("lib-item")) {           // grid tiles (icons) are shown as a normal row
+      var svg = clone.querySelector("svg"), name = clone.getAttribute("title") || clone.textContent.trim() || "Item";
+      var attrs = Array.prototype.slice.call(clone.attributes).filter(function (at) { return at.name.indexOf("data-") === 0; })
+        .map(function (at) { return " " + at.name + '="' + UI.escapeHtml(at.value) + '"'; }).join("");
+      html = '<div class="lib-item" draggable="true"' + attrs + '><span class="li-icon">' + (svg ? svg.outerHTML : "") + "</span>" + UI.escapeHtml(name) +
+        '<span class="li-add">' + Icons.svg("plus", { size: 14 }) + "</span></div>";
+    }
+    if (html.length > 6000 || /data:image/.test(html)) return;           // never store embedded images
+    var key = recentKey(item);
+    var list = readRecent().filter(function (r) { return r.key !== key; });
+    list.unshift({ key: key, html: html });
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX))); } catch (e) {}
+    renderRecent();
+  }
+  function renderRecent() {
+    var host = $("recentPanel"); if (!host) return;
+    var list = readRecent().slice(0, RECENT_MAX);
+    host.innerHTML = list.length ? list.map(function (r) { return r.html; }).join("")
+      : '<div class="recent-empty">Components you add will appear here.</div>';
+    wireLibDrag(host);
+  }
+
+  /* ---- Resizable panels: right panel width, and the two height splitters ---- */
+  var SIZES_KEY = "skytek.panelSizes";
+  function wirePanelSizers() {
+    var sz = {};
+    try { sz = JSON.parse(localStorage.getItem(SIZES_KEY)) || {}; } catch (e) { sz = {}; }
+    function save() { try { localStorage.setItem(SIZES_KEY, JSON.stringify(sz)); } catch (e) {} }
+    function drag(handle, start, move) {
+      if (!handle) return;
+      handle.addEventListener("pointerdown", function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        var sx = e.clientX, sy = e.clientY, s0 = start();
+        handle.classList.add("dragging"); document.body.style.userSelect = "none";
+        function mv(ev) { move(s0, ev.clientX - sx, ev.clientY - sy); }
+        function up() {
+          document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up);
+          handle.classList.remove("dragging"); document.body.style.userSelect = ""; save();
+        }
+        document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
+      });
+    }
+    var rightRail = $("leftRail"), leftRail = $("rightRail");
+    var recent = $("recentPanel"), layers = rightRail && rightRail.querySelector(".layers-scroll");
+    function clampN(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+    // right panel (Properties + Layers): width, handle on its left edge
+    function applyRightW() { if (rightRail) rightRail.style.width = sz.rightW ? sz.rightW + "px" : ""; }
+    drag($("rightResizer"), function () { return rightRail.offsetWidth; }, function (w0, dx) {
+      sz.rightW = clampN(w0 - dx, 220, 640); applyRightW();
+    });
+    if ($("rightResizer")) $("rightResizer").addEventListener("dblclick", function () { delete sz.rightW; applyRightW(); save(); });
+
+    // existing left-panel width handle: double-click resets it too
+    if ($("leftResizer")) $("leftResizer").addEventListener("dblclick", function () {
+      if (leftRail) leftRail.style.width = ""; try { localStorage.removeItem(RAIL_W_KEY); } catch (e) {}
+    });
+
+    // Recently used ↕ Library
+    function applyRecentH() {
+      if (!recent) return;
+      if (sz.recentH) { recent.style.height = sz.recentH + "px"; recent.style.overflowY = "auto"; }
+      else { recent.style.height = ""; recent.style.overflowY = ""; }
+    }
+    drag($("recentSplit"), function () { return recent.offsetHeight; }, function (h0, dx, dy) {
+      var max = leftRail ? leftRail.clientHeight - 180 : 600;
+      sz.recentH = clampN(h0 + dy, 44, Math.max(44, max)); applyRecentH();
+    });
+    if ($("recentSplit")) $("recentSplit").addEventListener("dblclick", function () { delete sz.recentH; applyRecentH(); save(); });
+
+    // Properties ↕ Layers (sets the Layers height; Properties takes the rest)
+    function applyLayersH() {
+      if (!layers) return;
+      if (sz.layersH) { layers.style.flex = "0 0 " + sz.layersH + "px"; layers.style.maxHeight = "none"; }
+      else { layers.style.flex = ""; layers.style.maxHeight = ""; }
+    }
+    drag($("propsSplit"), function () { return layers.offsetHeight; }, function (h0, dx, dy) {
+      var max = rightRail ? rightRail.clientHeight - 200 : 600;
+      sz.layersH = clampN(h0 - dy, 60, Math.max(60, max)); applyLayersH();
+    });
+    if ($("propsSplit")) $("propsSplit").addEventListener("dblclick", function () { delete sz.layersH; applyLayersH(); save(); });
+
+    applyRightW(); applyRecentH(); applyLayersH();
+  }
+
   function wireAI() {
+    if (!$("aiSend")) return;   // AI Assistant panel removed
     var send = $("aiSend"), input = $("aiPrompt"), chips = $("aiChips");
     if (!send) return;
     send.onclick = runAI;
@@ -4442,6 +4831,9 @@
     // layers panel show/hide
     $("toggleLayers").onclick = function () { $("leftRail").classList.add("collapsed"); $("showLayers").style.display = "grid"; };
     $("showLayers").onclick = function () { $("leftRail").classList.remove("collapsed"); $("showLayers").style.display = "none"; };
+    wirePropsDock();
+    renderRecent();
+    wirePanelSizers();
     setupRailResize();
     // export menu
     var menu = $("exportMenu");

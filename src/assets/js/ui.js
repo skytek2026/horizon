@@ -117,8 +117,13 @@
   function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme || "dark");
   }
+  // Dark is the default. One-time reset (themeVersion 1) moves every device to
+  // dark once; choosing Light in Settings afterwards is still remembered.
   function initTheme() {
-    applyTheme(window.Store ? window.Store.getSettings().theme : "dark");
+    if (!window.Store) { applyTheme("dark"); return; }
+    var s = window.Store.getSettings();
+    if (!(s.themeVersion >= 1)) { window.Store.setSettings({ theme: "dark", themeVersion: 1 }); s.theme = "dark"; }
+    applyTheme(s.theme);
   }
   function toggleTheme() {
     var cur = window.Store.getSettings().theme;

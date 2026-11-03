@@ -427,3 +427,60 @@
 #rtToolbar button:hover { background: var(--hover, rgba(255,255,255,0.07)); color: var(--text); }
 #rtToolbar button.on { background: var(--brand, #00AEEF); color: #fff; }
 #rtToolbar .rt-sep { width: 1px; height: 20px; background: var(--border); margin: 0 3px; }
+
+/* Layout: Library fills the left panel; Properties sits above Layers in the right panel */
+.erail--right .lib-body { flex: 1 1 auto; border-bottom: 0; }
+#libPanel { max-height: none; }
+.erail--left .props-scroll { flex: 1 1 0; min-height: 140px; overflow-y: auto; }
+.erail--left .layers-head { border-top: 1px solid var(--border); }
+.erail--left .layers-scroll { flex: 0 0 auto; max-height: 40%; overflow-y: auto; }
+
+/* Properties: docked above Layers, or floating anywhere on screen */
+.erail--left .props-dock { display: flex; flex-direction: column; flex: 1 1 0; min-height: 140px; }
+.props-dock .props-scroll { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+.props-dock.floating { position: fixed; z-index: 80; display: flex; flex-direction: column; background: var(--panel);
+  border: 1px solid var(--border-strong, var(--border)); border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,.45);
+  resize: both; overflow: hidden; min-width: 240px; min-height: 200px; box-sizing: border-box; }
+.props-dock.floating .props-head { cursor: move; user-select: none; -webkit-user-select: none; touch-action: none; }
+.erail--left.props-out .layers-scroll { flex: 1 1 auto; max-height: none; }
+.erail--left.props-out .layers-head { border-top: 0; display: flex; align-items: center; gap: 8px; }
+.erail--left.props-out .layers-head #toggleLayers { margin-left: auto; }
+
+/* Recently used (above Library) */
+.recent-body { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; padding: 10px 10px 12px; border-bottom: 1px solid var(--border); }
+.recent-body .lib-item { margin: 0; }
+.recent-empty { font-size: 12px; line-height: 1.45; color: var(--text-3, #7f8ea3); padding: 2px 4px; }
+
+/* Resize handles: panel widths (vertical edges) and section heights (horizontal splitters) */
+.erail--left { position: relative; }
+.rail-resizer--left { right: auto; left: -4px; }
+.hsplit { flex: 0 0 auto; height: 7px; margin: -3px 0; position: relative; z-index: 20; cursor: row-resize; touch-action: none; }
+.hsplit::after { content: ""; position: absolute; left: 0; right: 0; top: 3px; height: 1px; background: transparent; transition: background .12s; }
+.hsplit:hover::after, .hsplit.dragging::after { background: var(--accent-400, #33BEF2); height: 2px; top: 2px; }
+.erail--left.props-out #propsSplit { display: none; }
+
+/* Always-visible grip marks so the handles are easy to find */
+.hsplit::before { content: ""; position: absolute; left: 50%; top: 2px; width: 28px; height: 3px; margin-left: -14px; border-radius: 3px;
+  background: var(--border-strong, rgba(255,255,255,.18)); transition: background .12s; z-index: 1; }
+.hsplit:hover::before, .hsplit.dragging::before { background: var(--accent-400, #33BEF2); }
+.rail-resizer::before { content: ""; position: absolute; top: 50%; left: 2px; width: 3px; height: 28px; margin-top: -14px; border-radius: 3px;
+  background: var(--border-strong, rgba(255,255,255,.18)); transition: background .12s; }
+.rail-resizer:hover::before, .rail-resizer.dragging::before { background: var(--accent-400, #33BEF2); }
+
+/* Slider with an exact-value box (leader angle, north rotation) */
+.kslider-exact { display: flex; align-items: center; gap: 8px; }
+.kslider-exact input[type="range"] { flex: 1 1 auto; min-width: 0; }
+.kslider-exact .knum { flex: 0 0 64px; width: 64px; padding: 6px 6px; text-align: right; }
+.kslider-exact .kunit { flex: 0 0 auto; font-size: 12px; color: var(--text-3, #7f8ea3); margin-left: -4px; }
+
+/* Leader-end icon buttons */
+.kend button { display: grid; place-items: center; padding: 6px 0; }
+.kend button svg { display: block; }
+
+/* Red edge guides: shown while a component touches an image edge */
+.edge-guide { position: absolute; background: #FF2D2D; pointer-events: none; z-index: 12;
+  box-shadow: 0 0 calc(6px / var(--z,1)) rgba(255,45,45,.85); }
+.edge-guide.edge-l, .edge-guide.edge-r { top: 0; bottom: 0; width: calc(2px / var(--z,1)); }
+.edge-guide.edge-t, .edge-guide.edge-b { left: 0; right: 0; height: calc(2px / var(--z,1)); }
+.edge-guide.edge-l { left: 0; } .edge-guide.edge-r { right: 0; }
+.edge-guide.edge-t { top: 0; } .edge-guide.edge-b { bottom: 0; }

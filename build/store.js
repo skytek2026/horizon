@@ -569,7 +569,7 @@
 
   /* ---- settings (device-local) ---- */
   var DEFAULT_SETTINGS = {
-    theme: "dark", autosave: true, autosaveInterval: 30, snapToGrid: true, gridSize: 20,
+    theme: "dark", themeVersion: 0, autosave: true, autosaveInterval: 30, snapToGrid: true, gridSize: 20,
     showGrid: false, alignmentGuides: true, defaultExport: "png",
     fullName: "Skytek Operator", email: "operator@skytek.com"
   };

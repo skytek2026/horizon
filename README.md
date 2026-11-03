@@ -20,8 +20,8 @@ Requires Python 3 only. The output loads Lucide and JSZip from public CDNs and f
 
 ## Where data is stored
 
-- **On claude.ai** (the published artifact): projects and images live in the artifact’s shared storage, and the AI assistant is available.
-- **Anywhere else** (GitHub Pages): the app starts at the sign-in screen and uses the shared **Supabase** project — tables `projects`, `images`, `brand_assets` and the private `caption-images` bucket (see `SUPABASE_SETUP.sql`). Everyone using the GitHub Pages site shares the same projects. Connection settings are the `SUPABASE` block in `build/store.js`; the key there is Supabase’s publishable browser key, and access is governed by the Row-Level Security policies in the SQL file. The AI assistant is unavailable outside Claude.
+- **On claude.ai** (the published artifact): projects and images live in the artifact’s shared storage.
+- **Anywhere else** (GitHub Pages): the app starts at the sign-in screen and uses the shared **Supabase** project — tables `projects`, `images`, `brand_assets` and the private `caption-images` bucket (see `SUPABASE_SETUP.sql`). Everyone using the GitHub Pages site shares the same projects. Connection settings are the `SUPABASE` block in `build/store.js`; the key there is Supabase’s publishable browser key, and access is governed by the Row-Level Security policies in the SQL file.
 - The two locations hold separate data: projects made on claude.ai don’t appear on GitHub Pages and vice versa.
 - The sign-in screen is a simple shared gate (`skytek` / `skytek`).
 - The editor’s **Map** tab (callouts, rings, scale bar, track, labels, legend, footer) lives in `src/assets/js/editor.js` as the `Kit` module.

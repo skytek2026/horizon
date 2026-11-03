@@ -175,7 +175,6 @@
     complete: complete,
     hasAI: function () { return !!sampleCap; },
     start: function () {
-      if (typeof claude !== "undefined" && claude.use) claude.use("sample").then(function (s) { sampleCap = s; });
       var r = fromToken(location.hash);
       if (!r) r = { page: "login", search: "", frag: "" };
       mount(r, false);

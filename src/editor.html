@@ -58,34 +58,20 @@
   <div class="emain">
     <!-- LEFT RAIL -->
     <aside class="erail erail--left" id="leftRail">
-      <div class="erail-head" style="display:flex;align-items:center;gap:8px">Layers<span class="muted" id="libCount" style="display:none"></span><span style="flex:1"></span><button class="rail-toggle" id="toggleLayers" title="Hide layers panel"><span data-icon="x" data-size="15"></span></button></div>
-      <div class="erail-scroll">
-        <!-- AI ASSISTANT -->
-        <div class="ai-panel" id="aiPanel">
-          <div class="ai-head">
-            <span class="ai-spark" data-icon="sparkles" data-size="15"></span>
-            <span class="ai-title">AI Assistant</span>
-          </div>
-          <p class="ai-sub">Ask AI to edit the image — brightness, contrast, colour, black &amp; white, rotate, or add a marker.</p>
-          <div class="ai-log" id="aiLog"></div>
-          <div class="ai-chips" id="aiChips">
-            <button class="ai-chip" data-prompt="Brighten the image and boost the contrast a little">Brighten</button>
-            <button class="ai-chip" data-prompt="Convert the image to black and white">Black &amp; white</button>
-            <button class="ai-chip" data-prompt="Give it a warm vintage tone">Vintage tone</button>
-            <button class="ai-chip" data-prompt="Rotate the image 90 degrees clockwise">Rotate</button>
-            <button class="ai-chip" data-prompt="Revert the image to the original">Revert</button>
-          </div>
-          <div class="ai-input">
-            <textarea id="aiPrompt" rows="2" placeholder="e.g. Make it darker and more vivid"></textarea>
-            <button class="ai-send" id="aiSend" title="Ask AI (Ctrl+Enter)"><span data-icon="arrowUp" data-size="16"></span></button>
-          </div>
-        </div>
+      <div class="rail-resizer rail-resizer--left" id="rightResizer" title="Drag to resize · double-click to reset"></div>
+      <section class="props-dock" id="propsDock">
+        <div class="erail-head props-head" style="display:flex;align-items:center;gap:8px">Properties<span style="flex:1"></span><button class="rail-toggle" id="propsUndock" title="Undock — move anywhere"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button><button class="rail-toggle" id="toggleLayers" title="Hide panel"><span data-icon="x" data-size="15"></span></button></div>
+        <div class="erail-scroll props-scroll"><div class="props" id="propsPanel"></div></div>
+      </section>
+      <div class="hsplit" id="propsSplit" title="Drag to resize · double-click to reset"></div>
+      <div class="erail-head layers-head">Layers<span class="muted" id="libCount" style="display:none"></span></div>
+      <div class="erail-scroll layers-scroll">
         <div class="erail-block">
           <div class="layer-list" id="layerList"></div>
         </div>
       </div>
     </aside>
-    <button class="rail-reopen" id="showLayers" title="Show layers panel" style="display:none"><span data-icon="layers" data-size="16"></span></button>
+    <button class="rail-reopen" id="showLayers" title="Show properties & layers" style="display:none"><span data-icon="layers" data-size="16"></span></button>
 
     <!-- CANVAS + RIBBON -->
     <div class="ecanvas-col">
@@ -115,8 +101,11 @@
 
     <!-- RIGHT RAIL -->
     <aside class="erail erail--right" id="rightRail">
-      <div class="rail-resizer" id="leftResizer" title="Drag to resize"></div>
-      <div class="erail-head">Library</div>
+      <div class="rail-resizer" id="leftResizer" title="Drag to resize · double-click to reset"></div>
+      <div class="erail-head">Recently used</div>
+      <div class="recent-body" id="recentPanel"></div>
+      <div class="hsplit" id="recentSplit" title="Drag to resize · double-click to reset"></div>
+      <div class="erail-head" style="border-top:0">Library</div>
       <div class="lib-body">
         <div class="lib-tabs" id="libTabs">
           <button class="lib-tab on" data-tab="labels"><span data-icon="tag" data-size="17"></span>Labels</button>
@@ -130,8 +119,6 @@
         <div id="libPanel"></div>
       </div>
 
-      <div class="erail-head" style="border-top:0">Properties</div>
-      <div class="erail-scroll"><div class="props" id="propsPanel"></div></div>
     </aside>
   </div>
 </div>
