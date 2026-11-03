@@ -616,6 +616,8 @@ html.is-navigating::after { content: ""; position: fixed; left: 0; top: 0; heigh
 .etop .sep { width: 1px; height: 26px; background: var(--border); margin: 0 4px; }
 .etop .file-name { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
 .etop .file-name .fn { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.etop .file-name .fn[data-rename] { cursor: pointer; border-radius: 4px; }
+.etop .file-name .fn[data-rename]:hover { text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
 .etop .file-name .fp { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
 .etop .spacer { flex: 1; }
 .tbtn {
@@ -1394,6 +1396,7 @@ window.__PAGES["project"] = { title: "Project \u00b7 Horizon Caption Studio", bo
           '<div class="ic-meta">' + im.w + "×" + im.h + " · edited " + UI.fmtRelative(im.updatedAt) + "</div></div>" +
         '<div class="ic-actions">' +
           '<button class="btn btn--secondary btn--sm" data-act="open">' + Icons.svg("edit", { size: 14 }) + "Open</button>" +
+          '<button class="btn btn--ghost btn--sm btn--icon" data-act="ren" title="Rename">' + Icons.svg("text", { size: 14 }) + "</button>" +
           '<button class="btn btn--ghost btn--sm btn--icon" data-act="dup" title="Duplicate">' + Icons.svg("copy", { size: 14 }) + "</button>" +
           '<button class="btn btn--ghost btn--sm btn--icon" data-act="del" title="Delete">' + Icons.svg("trash", { size: 14 }) + "</button>" +
         "</div></div>";
@@ -1407,6 +1410,9 @@ window.__PAGES["project"] = { title: "Project \u00b7 Horizon Caption Studio", bo
       function open() { App.href = "editor.html?project=" + projectId + "&image=" + id; }
       card.querySelector('[data-act="open"]').addEventListener("click", function (e) { e.stopPropagation(); open(); });
       card.querySelector(".ic-thumb").addEventListener("click", open);
+      function rename(e) { e.stopPropagation(); UI.renameImage(projectId, id, function () { refresh(); renderGallery(); renderHero(); }); }
+      card.querySelector('[data-act="ren"]').addEventListener("click", rename);
+      var nm = card.querySelector(".ic-name"); nm.title = "Double-click to rename"; nm.addEventListener("dblclick", rename);
       card.querySelector('[data-act="dup"]').addEventListener("click", function (e) {
         e.stopPropagation(); Store.duplicateImage(projectId, id); UI.toast({ type: "success", title: "Image duplicated" }); refresh(); renderGallery(); renderHero();
       });
@@ -5982,6 +5988,12 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
       return;
     }
     $("fileName").textContent = image.filename;
+    $("fileName").setAttribute("data-rename", ""); $("fileName").title = "Click to rename";
+    $("fileName").onclick = function () {
+      UI.renameImage(projectId, imageId, function (name) {
+        image.filename = name; $("fileName").textContent = name; document.title = name + " · Horizon Caption Studio";
+      });
+    };
     $("filePath").textContent = project.name;
     document.title = image.filename + " · Horizon Caption Studio";
     stageImg.onload = function () {
@@ -6507,9 +6519,32 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
     if (el && window.Store) el.textContent = window.Store.getProjects().length;
   }
 
+  // Rename an image (project gallery + editor). Selects the name, not the extension.
+  function renameImage(projectId, imageId, onDone) {
+    var im = Store.getImage(projectId, imageId); if (!im) return;
+    modal({
+      title: "Rename image",
+      fields: [{ name: "filename", label: "Image name", value: im.filename, placeholder: "e.g. bay4-inspection.png" }],
+      confirmText: "Rename",
+      onConfirm: function (data) {
+        var name = String(data.filename || "").replace(/[\\/]+/g, "-").trim().slice(0, 120);
+        if (!name) { toast({ type: "warning", title: "Name can’t be empty" }); return false; }
+        if (name === im.filename) return;
+        Store.updateImage(projectId, imageId, { filename: name });
+        toast({ type: "success", title: "Image renamed", desc: name });
+        if (onDone) onDone(name);
+      }
+    });
+    setTimeout(function () {
+      var inp = document.querySelector('.modal [data-field="filename"]'); if (!inp) return;
+      var dot = inp.value.lastIndexOf(".");
+      try { inp.setSelectionRange(0, dot > 0 ? dot : inp.value.length); } catch (e) {}
+    }, 90);
+  }
+
   window.UI = {
     hydrateIcons: hydrateIcons, fmtDate: fmtDate, fmtRelative: fmtRelative, escapeHtml: escapeHtml,
-    toast: toast, modal: modal, confirm: confirm,
+    toast: toast, modal: modal, confirm: confirm, renameImage: renameImage,
     applyTheme: applyTheme, initTheme: initTheme, toggleTheme: toggleTheme,
     requireAuth: requireAuth, logout: logout,
     buildSidebar: buildSidebar, wireSidebar: wireSidebar, updateSidebarCounts: updateSidebarCounts, fileToImage: fileToImage

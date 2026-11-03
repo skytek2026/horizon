@@ -61,6 +61,7 @@
           '<div class="ic-meta">' + im.w + "×" + im.h + " · edited " + UI.fmtRelative(im.updatedAt) + "</div></div>" +
         '<div class="ic-actions">' +
           '<button class="btn btn--secondary btn--sm" data-act="open">' + Icons.svg("edit", { size: 14 }) + "Open</button>" +
+          '<button class="btn btn--ghost btn--sm btn--icon" data-act="ren" title="Rename">' + Icons.svg("text", { size: 14 }) + "</button>" +
           '<button class="btn btn--ghost btn--sm btn--icon" data-act="dup" title="Duplicate">' + Icons.svg("copy", { size: 14 }) + "</button>" +
           '<button class="btn btn--ghost btn--sm btn--icon" data-act="del" title="Delete">' + Icons.svg("trash", { size: 14 }) + "</button>" +
         "</div></div>";
@@ -74,6 +75,9 @@
       function open() { location.href = "editor.html?project=" + projectId + "&image=" + id; }
       card.querySelector('[data-act="open"]').addEventListener("click", function (e) { e.stopPropagation(); open(); });
       card.querySelector(".ic-thumb").addEventListener("click", open);
+      function rename(e) { e.stopPropagation(); UI.renameImage(projectId, id, function () { refresh(); renderGallery(); renderHero(); }); }
+      card.querySelector('[data-act="ren"]').addEventListener("click", rename);
+      var nm = card.querySelector(".ic-name"); nm.title = "Double-click to rename"; nm.addEventListener("dblclick", rename);
       card.querySelector('[data-act="dup"]').addEventListener("click", function (e) {
         e.stopPropagation(); Store.duplicateImage(projectId, id); UI.toast({ type: "success", title: "Image duplicated" }); refresh(); renderGallery(); renderHero();
       });

@@ -14,6 +14,8 @@
 .etop .sep { width: 1px; height: 26px; background: var(--border); margin: 0 4px; }
 .etop .file-name { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
 .etop .file-name .fn { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.etop .file-name .fn[data-rename] { cursor: pointer; border-radius: 4px; }
+.etop .file-name .fn[data-rename]:hover { text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
 .etop .file-name .fp { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
 .etop .spacer { flex: 1; }
 .tbtn {

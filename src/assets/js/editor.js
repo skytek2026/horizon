@@ -4470,6 +4470,12 @@
       return;
     }
     $("fileName").textContent = image.filename;
+    $("fileName").setAttribute("data-rename", ""); $("fileName").title = "Click to rename";
+    $("fileName").onclick = function () {
+      UI.renameImage(projectId, imageId, function (name) {
+        image.filename = name; $("fileName").textContent = name; document.title = name + " · Horizon Caption Studio";
+      });
+    };
     $("filePath").textContent = project.name;
     document.title = image.filename + " · Horizon Caption Studio";
     stageImg.onload = function () {

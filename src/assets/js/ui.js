@@ -219,9 +219,32 @@
     if (el && window.Store) el.textContent = window.Store.getProjects().length;
   }
 
+  // Rename an image (project gallery + editor). Selects the name, not the extension.
+  function renameImage(projectId, imageId, onDone) {
+    var im = Store.getImage(projectId, imageId); if (!im) return;
+    modal({
+      title: "Rename image",
+      fields: [{ name: "filename", label: "Image name", value: im.filename, placeholder: "e.g. bay4-inspection.png" }],
+      confirmText: "Rename",
+      onConfirm: function (data) {
+        var name = String(data.filename || "").replace(/[\\/]+/g, "-").trim().slice(0, 120);
+        if (!name) { toast({ type: "warning", title: "Name can’t be empty" }); return false; }
+        if (name === im.filename) return;
+        Store.updateImage(projectId, imageId, { filename: name });
+        toast({ type: "success", title: "Image renamed", desc: name });
+        if (onDone) onDone(name);
+      }
+    });
+    setTimeout(function () {
+      var inp = document.querySelector('.modal [data-field="filename"]'); if (!inp) return;
+      var dot = inp.value.lastIndexOf(".");
+      try { inp.setSelectionRange(0, dot > 0 ? dot : inp.value.length); } catch (e) {}
+    }, 90);
+  }
+
   window.UI = {
     hydrateIcons: hydrateIcons, fmtDate: fmtDate, fmtRelative: fmtRelative, escapeHtml: escapeHtml,
-    toast: toast, modal: modal, confirm: confirm,
+    toast: toast, modal: modal, confirm: confirm, renameImage: renameImage,
     applyTheme: applyTheme, initTheme: initTheme, toggleTheme: toggleTheme,
     requireAuth: requireAuth, logout: logout,
     buildSidebar: buildSidebar, wireSidebar: wireSidebar, updateSidebarCounts: updateSidebarCounts, fileToImage: fileToImage
