@@ -40,6 +40,163 @@
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
   var db = null, assets = null;
+  // Outside Claude (e.g. GitHub Pages) there is no shared storage runtime:
+  // fall back to this browser's IndexedDB so the prototype still works end to end.
+  var LOCAL = !(typeof claude !== "undefined" && claude && claude.use);
+  var BLOB = function (id) { return "/_blob/" + id; };
+  var BLOBID = function (url) { var m = /^\/_blob\/([0-9a-f]{32})$/.exec(url || ""); return m ? m[1] : null; };
+
+  // Shared backend for the GitHub Pages build: the original Supabase project.
+  // The publishable key is Supabase's browser key; access is governed by the
+  // Row-Level Security policies in SUPABASE_SETUP.sql.
+  var SUPABASE = {
+    url: "https://atccggprkaimmmutsprp.supabase.co",
+    key: "sb_publishable_zyZ5cLHHTMGhJD4UKdLtEQ_JcHsFlIJ",
+    bucket: "caption-images",
+    lib: "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"
+  };
+  var BACKEND = LOCAL ? (SUPABASE.url ? "supabase" : "browser") : "claude";
+  var EMBED_OFFLOAD = BACKEND !== "supabase";   // Supabase jsonb has no size cap: keep annotations inline like the original app
+
+  function loadScript(src) {
+    return new Promise(function (res, rej) {
+      if (window.supabase && window.supabase.createClient) return res();
+      var el = document.createElement("script"); el.src = src; el.async = true;
+      el.onload = function () { res(); };
+      el.onerror = function () { rej(new Error("Couldn’t load the Supabase library. Check your connection and try again.")); };
+      document.head.appendChild(el);
+    });
+  }
+
+  function supabaseRuntime() {
+    return loadScript(SUPABASE.lib).then(function () {
+      var sb = window.supabase.createClient(SUPABASE.url, SUPABASE.key, { auth: { persistSession: false, autoRefreshToken: false } });
+      var B = SUPABASE.bucket, urls = {}, ids = {}, sizes = {};
+      var TABLE = { projects: "projects", images: "images", brand: "brand_assets" };
+      function chk(res) {
+        if (res && res.error) { var e = new Error(res.error.message || "Supabase request failed"); e.code = res.error.code || res.error.statusCode; throw e; }
+        return res;
+      }
+      function iso(t) { return new Date(t || Date.now()).toISOString(); }
+      function ms(v) { var t = Date.parse(v); return isNaN(t) ? Date.now() : t; }
+      function toDoc(coll, r) {
+        if (coll === "projects") return { name: r.name, description: r.description || "", createdAt: ms(r.created_at), updatedAt: ms(r.updated_at) };
+        if (coll === "images") return { projectId: r.project_id, filename: r.filename || "image", w: r.w || 0, h: r.h || 0, objects: r.objects || [],
+          assetId: r.storage_path || null, sizeBytes: sizes[r.storage_path] || 0, sortIndex: r.sort_index || 0, createdAt: ms(r.created_at), updatedAt: ms(r.updated_at) };
+        return { name: r.name || "Asset", w: r.w || 0, h: r.h || 0, assetId: r.storage_path || null, sizeBytes: sizes[r.storage_path] || 0, createdAt: ms(r.created_at) };
+      }
+      function toRow(coll, id, d) {
+        if (coll === "projects") return { id: id, name: d.name, description: d.description || "", created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
+        if (coll === "images") return { id: id, project_id: d.projectId, filename: d.filename || "image", w: Math.round(d.w || 0), h: Math.round(d.h || 0),
+          objects: d.objects || [], storage_path: d.assetId || null, sort_index: d.sortIndex || 0, created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
+        return { id: id, name: d.name || "Asset", w: Math.round(d.w || 0), h: Math.round(d.h || 0), storage_path: d.assetId || null, created_at: iso(d.createdAt) };
+      }
+      function remember(path, blob) { var u = URL.createObjectURL(blob); urls[path] = u; ids[u] = path; sizes[path] = blob.size; return u; }
+      // Files are pulled into same-origin blob: URLs so canvas export never taints.
+      function fetchFiles(paths) {
+        var need = paths.filter(function (p, i) { return p && !urls[p] && paths.indexOf(p) === i; });
+        return new Promise(function (done) {
+          runLimited(need, 5, function (p) {
+            return sb.storage.from(B).download(p).then(function (res) { if (res && res.data) remember(p, res.data); }, function () {});
+          }).then(done);
+        });
+      }
+      // One write queue: a project row always lands before its images (foreign key).
+      var queue = Promise.resolve();
+      function serial(fn) { var p = queue.then(fn); queue = p.catch(function () {}); return p; }
+      var sdb = {
+        collection: function (coll) {
+          var q = { limit: function () { return q; }, get: function () {
+            return sb.from(TABLE[coll]).select("*").then(chk).then(function (res) {
+              var rows = res.data || [], paths = [];
+              if (coll !== "projects") rows.forEach(function (r) {
+                if (r.storage_path) paths.push(r.storage_path);
+                if (coll === "images") Object.keys(collectRefs(r.objects, {})).forEach(function (k) { paths.push(k); });
+              });
+              return fetchFiles(paths).then(function () {
+                var docs = rows.map(function (r) { var d = toDoc(coll, r); return { id: r.id, data: function () { return d; } }; });
+                return { docs: docs, size: docs.length, empty: !docs.length };
+              });
+            });
+          } };
+          return q;
+        },
+        doc: function (path) {
+          var parts = path.split("/"), coll = parts[0], id = parts.slice(1).join("/");
+          return {
+            set: function (d) { return serial(function () { return sb.from(TABLE[coll]).upsert(toRow(coll, id, d), { onConflict: "id" }).then(chk); }); },
+            delete: function () { return serial(function () { return sb.from(TABLE[coll]).delete().eq("id", id).then(chk); }); }
+          };
+        }
+      };
+      var EXT = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif", "image/svg+xml": ".svg" };
+      var sassets = {
+        upload: function (blob) {
+          var p = "files/" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10) + (EXT[blob.type] || "");
+          return sb.storage.from(B).upload(p, blob, { upsert: true, contentType: blob.type || "image/png" }).then(chk).then(function () {
+            return { id: p, url: remember(p, blob), sizeBytes: blob.size, contentType: blob.type };
+          });
+        },
+        delete: function (p) { return sb.storage.from(B).remove([p]).then(function () { return { deleted: true }; }, function () { return { deleted: false }; }); }
+      };
+      return { db: sdb, assets: sassets, blobUrl: function (p) { return urls[p] || ""; }, blobId: function (u) { return ids[u] || null; } };
+    });
+  }
+
+  function localRuntime() {
+    return new Promise(function (resolve) {
+      var req;
+      try { if (!window.indexedDB) return resolve(null); req = indexedDB.open("horizon-caption-studio", 1); }
+      catch (e) { return resolve(null); }
+      req.onupgradeneeded = function () { var d = req.result; d.createObjectStore("docs"); d.createObjectStore("blobs"); };
+      req.onerror = function () { resolve(null); };
+      req.onsuccess = function () {
+        var idb = req.result, urls = {}, ids = {};
+        function tx(store, mode, fn) {
+          return new Promise(function (res, rej) {
+            var t = idb.transaction(store, mode), r = fn(t.objectStore(store));
+            t.oncomplete = function () { res(r ? r.result : undefined); };
+            t.onerror = function () { rej(t.error); }; t.onabort = function () { rej(t.error); };
+          });
+        }
+        function remember(id, blob) { var u = URL.createObjectURL(blob); urls[id] = u; ids[u] = id; return u; }
+        function getColl(coll) {
+          var range = IDBKeyRange.bound(coll + "/", coll + "/\uffff");
+          return Promise.all([tx("docs", "readonly", function (st) { return st.getAllKeys(range); }),
+                              tx("docs", "readonly", function (st) { return st.getAll(range); })]).then(function (r) {
+            return r[0].map(function (k, i) { return { id: String(k).slice(coll.length + 1), data: function () { return JSON.parse(r[1][i]); } }; });
+          });
+        }
+        var ldb = {
+          collection: function (coll) {
+            var q = { limit: function () { return q; },
+                      get: function () { return getColl(coll).then(function (docs) { return { docs: docs, size: docs.length, empty: !docs.length }; }); } };
+            return q;
+          },
+          doc: function (path) {
+            return { set: function (data) { return tx("docs", "readwrite", function (st) { return st.put(JSON.stringify(data), path); }); },
+                     delete: function () { return tx("docs", "readwrite", function (st) { return st.delete(path); }); } };
+          }
+        };
+        var lassets = {
+          upload: function (blob) {
+            var id = "loc" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+            return tx("blobs", "readwrite", function (st) { return st.put(blob, id); }).then(function () {
+              return { id: id, url: remember(id, blob), sizeBytes: blob.size, contentType: blob.type };
+            });
+          },
+          delete: function (id) {
+            return tx("blobs", "readwrite", function (st) { return st.delete(id); }).then(function () { return { deleted: true }; });
+          }
+        };
+        Promise.all([tx("blobs", "readonly", function (st) { return st.getAllKeys(); }),
+                     tx("blobs", "readonly", function (st) { return st.getAll(); })]).then(function (r) {
+          r[0].forEach(function (k, i) { remember(String(k), r[1][i]); });
+          resolve({ db: ldb, assets: lassets, blobUrl: function (id) { return urls[id] || ""; }, blobId: function (u) { return ids[u] || null; } });
+        }, function () { resolve(null); });
+      };
+    });
+  }
 
   /* ---- cache ---- */
   var _projects = [], _brand = [], IMG = {}, ASSET = {}, NEEDUP = {};
@@ -172,7 +329,11 @@
     })(out);
     function visit(parent, key) {
       var v = parent[key];
-      if (typeof v === "string") { if (v.length > EMBED_MIN && v.indexOf("data:image") === 0) found.push([parent, key, v]); }
+      if (typeof v === "string") {
+        var known = (v.indexOf("/_blob/") === 0 || v.indexOf("blob:") === 0) ? BLOBID(v) : null;
+        if (known) parent[key] = "skasset:" + known;
+        else if (EMBED_OFFLOAD && v.length > EMBED_MIN && v.indexOf("data:image") === 0) found.push([parent, key, v]);
+      }
       else if (v && typeof v === "object") {
         if (Array.isArray(v)) { for (var i = 0; i < v.length; i++) visit(v, i); }
         else { for (var k in v) visit(v, k); }
@@ -192,7 +353,7 @@
     return acc;
   }
   function decodeObjects(node) {
-    if (typeof node === "string") return node.indexOf("skasset:") === 0 ? (EMBDATA[node.slice(8)] || ("/_blob/" + node.slice(8))) : node;
+    if (typeof node === "string") return node.indexOf("skasset:") === 0 ? (EMBDATA[node.slice(8)] || BLOB(node.slice(8))) : node;
     if (Array.isArray(node)) return node.map(decodeObjects);
     if (node && typeof node === "object") { var o = {}; for (var k in node) o[k] = decodeObjects(node[k]); return o; }
     return node;
@@ -221,6 +382,13 @@
   }
   async function init() {
     try {
+      if (LOCAL) {
+        var L = BACKEND === "supabase" ? await supabaseRuntime() : await localRuntime();
+        if (!L) { showFatal("This browser can’t store projects (private browsing may block it). Try a regular window."); return; }
+        db = L.db; assets = L.assets; assetsP = Promise.resolve(assets); BLOB = L.blobUrl; BLOBID = L.blobId;
+        await load(); fireReady(); markFresh();
+        return;
+      }
       if (typeof claude !== "undefined" && claude.use) getAssets(); // connect in the background; only the db blocks loading
       // Paint instantly from this device's last snapshot, then reconcile.
       var snap = read(KEYS.snapshot, null);
@@ -242,7 +410,8 @@
       markFresh();
     } catch (e) {
       console.error(e);
-      if (!_ready) showFatal("Couldn’t load your workspace" + (e && e.code ? " (" + e.code + ")" : "") + ". " + ((e && e.message) || ""));
+      if (!_ready) showFatal((BACKEND === "supabase" ? "Couldn’t reach the Supabase workspace" : "Couldn’t load your workspace") +
+        (e && e.code ? " (" + e.code + ")" : "") + ". " + ((e && e.message) || ""));
     }
   }
   function markFresh() {
@@ -354,7 +523,7 @@
     q.thumbnail = q.images.length ? (q.images[0].src || null) : null;
     return q;
   }
-  function srcOf(id) { return IMG[id] || (ASSET[id] ? "/_blob/" + ASSET[id] : ""); }
+  function srcOf(id) { return IMG[id] || (ASSET[id] ? BLOB(ASSET[id]) : ""); }
   function findCache(id) { for (var i = 0; i < _projects.length; i++) if (_projects[i].id === id) return _projects[i]; return null; }
   function imgIndex(p, imageId) { for (var i = 0; i < p.images.length; i++) if (p.images[i].id === imageId) return i; return -1; }
 
@@ -684,7 +853,7 @@
 
   window.Store = {
     KEYS: KEYS, uid: uid, ready: ready, readyFresh: readyFresh, onChange: onChange, clearListeners: clearListeners,
-    isFresh: function () { return _fresh; }, refresh: refresh, flush: flush, hasPending: hasPending, clearAll: clearAll,
+    isFresh: function () { return _fresh; }, isLocal: function () { return LOCAL; }, backend: function () { return BACKEND; }, refresh: refresh, flush: flush, hasPending: hasPending, clearAll: clearAll,
     isReady: function () { return _ready; },
     saveImageObjectsBeacon: saveImageObjectsBeacon,
     getSession: getSession, setSession: setSession, clearSession: clearSession, isAuthed: isAuthed,
