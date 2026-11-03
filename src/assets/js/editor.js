@@ -51,8 +51,8 @@
   /* ------------------------------------------------------------
      Top-bar logo
   ------------------------------------------------------------ */
-  $("topLogo").innerHTML = Icons.svg("tag", { size: 17, stroke: "#fff" });
-  $("topLogo").style.cssText = "display:grid;place-items:center;color:#fff";
+  $("topLogo").innerHTML = UI.logoSVG();
+  $("topLogo").style.cssText = "display:block;width:100%;height:100%";
   $("btnBack").href = "project.html?id=" + projectId;
   UI.hydrateIcons();
 
@@ -691,6 +691,7 @@
       return out;
     }
     function legendLayout(o) {
+      if (o.layout === "inline") return legendInline(o);
       var f = o.f, pad = Math.round(f * 1.1), rowH = Math.round(f * 2.05), lS = Math.round(f * 1.0), tS = Math.round(f * 0.8), ls = f * 0.22;
       var items = o.items || [], labW = 0;
       items.forEach(function (it) { labW = Math.max(labW, textW(it.label || " ", 500, lS, "Inter")); });
@@ -706,6 +707,29 @@
         prims.push(T(pad + f * 2.1, cy, it.label || "", lS, 500, "Inter", "#ffffff"));
       });
       return { w: w, h: h, prims: prims };
+    }
+
+    // Inline legend: one row — title, a thin divider, then symbol + label pairs
+    function legendInline(o) {
+      var f = o.f, padX = Math.round(f * 1.2), lS = Math.round(f * 1.0), tS = Math.round(f * 0.8), ls = f * 0.22;
+      var h = Math.round(f * 3.2), cy = h / 2, gap = Math.round(f * 1.6), symW = f * 1.4, symGap = f * 0.6;
+      var body = [], x = padX, items = o.items || [];
+      if (o.title) {
+        body.push(T(x, cy, o.title, tS, 700, "Inter", MUTED, "start", ls));
+        x += textW(o.title, 700, tS, "Inter", ls) + f * 0.9;
+        if (items.length) { body.push({ t: "path", d: pLine([[x, h * 0.28], [x, h * 0.72]]), stroke: "#ffffff", strokeOp: 0.2, sw: 1 }); x += 1 + f * 0.9; }
+      }
+      items.forEach(function (it, i) {
+        if (i) x += gap;
+        body = body.concat(legendSym(it.sym, x + symW / 2, cy, it.color || "#ffffff", f));
+        x += symW + symGap;
+        body.push(T(x, cy, it.label || "", lS, 500, "Inter", "#ffffff"));
+        x += textW(it.label || " ", 500, lS, "Inter");
+      });
+      var w = Math.round(x + padX);
+      var prims = [{ t: "path", d: pRect(0, 0, w, h, Math.round(f * 0.6)), fill: o.bg || NAVY, fillOp: o.bgOpacity == null ? 0.9 : o.bgOpacity,
+                     stroke: "#ffffff", strokeOp: 0.08, sw: 1, shadow: { blur: Math.round(f * 1.2), dy: Math.round(f * 0.35), op: 0.35 } }];
+      return { w: w, h: h, prims: prims.concat(body) };
     }
 
     function iconImageSrc(name, color, size) {
@@ -1184,7 +1208,15 @@
             '<input class="input leg-label" data-kitem="label" data-kidx="' + i + '" value="' + esc(it.label) + '" placeholder="Label">' +
             '<button class="leg-x" data-kitemdel="' + i + '" title="Remove">' + Icons.svg("trash", { size: 13 }) + "</button></div>";
         }).join("");
-        h += group("Legend", kText("Title", "title", o.title, "optional") + its +
+        var LAYOUT_IC = {
+          stacked: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="5" cy="6" r="1.6" fill="currentColor"/><path d="M10 6h10"/><circle cx="5" cy="12" r="1.6" fill="currentColor"/><path d="M10 12h10"/><circle cx="5" cy="18" r="1.6" fill="currentColor"/><path d="M10 18h10"/></svg>',
+          inline:  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="3.5" cy="12" r="1.6" fill="currentColor"/><path d="M6.5 12h3"/><circle cx="13" cy="12" r="1.6" fill="currentColor"/><path d="M16 12h3"/><circle cx="22" cy="12" r="1.2" fill="currentColor"/></svg>'
+        };
+        var lay = o.layout === "inline" ? "inline" : "stacked";
+        var layRow = '<div class="prop-row"><label>Layout</label><div class="ctrl seg2">' + [["stacked", "Stacked"], ["inline", "Inline"]].map(function (l) {
+          return '<button data-kseg="layout" data-kval="' + esc(JSON.stringify(l[0])) + '" class="' + (lay === l[0] ? "on" : "") + '" title="' + l[1] + '" style="display:inline-flex;align-items:center;justify-content:center;gap:6px">' + LAYOUT_IC[l[0]] + l[1] + "</button>";
+        }).join("") + "</div></div>";
+        h += group("Legend", layRow + kText("Title", "title", o.title, "optional") + its +
           '<button class="view-btn leg-add" data-kitemadd="1">' + Icons.svg("plus", { size: 14 }) + "Add item</button>" + kNum("Size", "f", o.f, 6, 80));
       } else if (o.type === "footer") {
         var brands = Store.getBrandAssets();
@@ -3908,11 +3940,15 @@
         drawObject(ctx, o, next);
       }
       function finish() {
-        var mime = format === "jpeg" ? "image/jpeg" : "image/png";
-        var url = canvas.toDataURL(mime, format === "jpeg" ? 0.92 : undefined);
+        var mime = format === "jpeg" ? "image/jpeg" : (format === "webp" ? "image/webp" : "image/png");
+        var url = canvas.toDataURL(mime, format === "png" ? undefined : 0.92);
+        if (format === "webp" && url.indexOf("data:image/webp") !== 0) {   // e.g. Safari: no WEBP encoder
+          format = "png"; url = canvas.toDataURL("image/png");
+          UI.toast({ type: "warning", title: "This browser can’t create WEBP", desc: "Saved as PNG instead." });
+        }
         var a = document.createElement("a");
         a.href = url;
-        a.download = image.filename.replace(/\.[^.]+$/, "") + "-annotated." + (format === "jpeg" ? "jpg" : "png");
+        a.download = image.filename.replace(/\.[^.]+$/, "") + "-annotated." + (format === "jpeg" ? "jpg" : (format === "webp" ? "webp" : "png"));
         document.body.appendChild(a); a.click(); a.remove();
         UI.toast({ type: "success", title: "Exported " + format.toUpperCase(), desc: a.download });
       }

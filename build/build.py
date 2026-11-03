@@ -30,6 +30,9 @@ for key, fname, sheets, script in [
     ("settings", "settings.html", ["app", "pages"], None),
 ]:
     title, cls, html, inline = split_page(rd(fname))
+    if "__LOGIN_BG__" in html:   # embed the sign-in background photo
+        import base64 as _b64
+        html = html.replace("__LOGIN_BG__", "data:image/webp;base64," + _b64.b64encode((S / "assets/img/login-earth.webp").read_bytes()).decode())
     code = rd(script) if script else inline
     html = html.replace("shared Supabase database", "shared workspace")
     code = code.replace("shared Supabase database", "shared workspace")
@@ -88,6 +91,7 @@ out = f"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Horizon Caption Studio</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,{__import__("urllib.parse").parse.quote(rd("assets/img/logo-device.svg"))}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="{fonts}">

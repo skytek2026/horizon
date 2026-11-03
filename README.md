@@ -10,6 +10,12 @@ Image annotation studio for satellite imagery, powered by Skytek. Five pages (si
 - `build/build.py` — assembles everything into `index.html`.
 - `index.html` — the built app at the repository root, identical to the published artifact. GitHub Pages serves this file.
 
+## Brand
+
+The logo device lives in `src/assets/img/logo-device.svg`. It is inlined in `src/assets/js/ui.js` (`UI.logoSVG()`) for the sidebar, sign-in page and editor, and used as the page icon by the build.
+
+The sign-in background photo is `src/assets/img/login-earth.webp` (embedded by the build).
+
 ## Build
 
 ```

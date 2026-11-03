@@ -29,9 +29,29 @@
       linear-gradient(160deg, #0d1828, #0a1019);
     border-right: 1px solid var(--border);
   }
+  .auth-brand {
+    --login-bg: url("__LOGIN_BG__");
+    background:
+      linear-gradient(90deg, rgba(8,13,22,.88) 0%, rgba(8,13,22,.62) 42%, rgba(8,13,22,.12) 100%),
+      var(--login-bg) right center / cover no-repeat, #05080f !important;
+  }
+  [data-theme="light"] .auth-brand {
+    background:
+      linear-gradient(90deg, rgba(255,255,255,.94) 0%, rgba(255,255,255,.80) 40%, rgba(255,255,255,.18) 100%),
+      var(--login-bg) right center / cover no-repeat, #e9eef5 !important;
+  }
+  [data-theme="light"] .auth-brand--legacy {
+    background:
+      radial-gradient(900px 500px at 20% 0%, rgba(0,174,239,0.12), transparent 60%),
+      linear-gradient(160deg, #FFFFFF, #EEF3F9);
+  }
+  [data-theme="light"] .auth::before, [data-theme="light"] .auth::after { opacity: .18; }
+  [data-theme="light"] .auth-logo .tg, [data-theme="light"] .auth-hero h2 .hl, [data-theme="light"] .auth-feat .fi { color: #0284C7; }
   .auth-logo { display: flex; align-items: center; gap: 14px; }
   .auth-logo .mk { width: 52px; height: 52px; border-radius: 15px; background: linear-gradient(140deg, var(--accent), #0066a8); display:grid; place-items:center; box-shadow: 0 10px 30px -6px rgba(0,174,239,.55), inset 0 1px 0 rgba(255,255,255,.3); }
   .auth-logo .mk svg { width: 30px; height: 30px; color:#fff; }
+  .auth-logo .mk { background: none !important; box-shadow: none !important; border-radius: 0 !important; width: 60px !important; height: 60px !important; }
+  .auth-logo .mk svg { width: 100%; height: 100%; display: block; }
   .auth-logo .nm { font-family: var(--font-display); font-weight: 800; font-size: 22px; letter-spacing:-.02em; }
   .auth-logo .sb { font-size: 12px; color: var(--text-3); letter-spacing:.16em; text-transform:uppercase; }
   .auth-logo .tg { font-size: 10px; font-weight: 600; color: var(--accent-400); letter-spacing:.18em; text-transform:uppercase; margin-top: 4px; }
@@ -85,7 +105,7 @@
       <div class="auth-features">
         <div class="auth-feat"><span class="fi" data-icon="tag" data-size="17"></span>Dozens of prebuilt technical labels &amp; captions</div>
         <div class="auth-feat"><span class="fi" data-icon="layers" data-size="17"></span>Drag, resize, rotate &amp; layer with full control</div>
-        <div class="auth-feat"><span class="fi" data-icon="download" data-size="17"></span>Export to PNG or JPEG, all annotations baked in</div>
+        <div class="auth-feat"><span class="fi" data-icon="download" data-size="17"></span>Export to PNG, JPEG or WEBP, all annotations baked in</div>
       </div>
     </div>
     <div class="auth-foot"><span>© 2026 Skytek</span><span>v1.0 · Shared workspace</span></div>
@@ -112,7 +132,6 @@
         <label class="remember"><input type="checkbox" id="remember" checked> Keep me signed in</label>
         <button type="submit" class="btn btn--primary btn--lg btn--block">Sign in</button>
       </form>
-      <div class="hint">Demo credentials — <code>skytek</code> / <code>skytek</code></div>
     </div>
   </section>
 </div>
@@ -126,7 +145,7 @@
   Store.seedIfEmpty();
   UI.initTheme();
   // logo mark
-  document.getElementById("logoMk").innerHTML = Icons.svg("tag", { size: 30, stroke: "#fff" });
+  document.getElementById("logoMk").innerHTML = UI.logoSVG();
   UI.hydrateIcons();
 
   // already signed in? skip
