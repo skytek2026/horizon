@@ -3913,6 +3913,7 @@
     Store.saveImageObjects(projectId, imageId, S.objects);
     Store.pushRecent({ projectId: projectId, imageId: imageId, filename: image.filename, projectName: project.name });
     S.dirty = false;
+    scheduleThumb();
     setTimeout(function () { setAutosaveState("", "Saved"); }, 350);
     if (!silent) UI.toast({ type: "success", title: "Saved", duration: 1400 });
   }
@@ -4429,7 +4430,7 @@
     $("imgRibbon").classList.remove("empty");
     strip.innerHTML = project.images.map(function (im, i) {
       return '<div class="ribbon-thumb' + (im.id === imageId ? " is-current" : "") + '" data-id="' + im.id + '" draggable="true" title="' + UI.escapeHtml(im.filename) + '">' +
-        '<img src="' + im.src + '" alt="">' +
+        '<img src="' + (im.thumb || im.src) + '" alt="">' +
         '<span class="rt-num">' + (i + 1) + "</span>" +
         '<span class="rt-acts">' +
           '<button class="rt-act" data-imgact="dup" title="Duplicate image">' + Icons.svg("copy", { size: 12 }) + "</button>" +
@@ -4440,7 +4441,7 @@
     strip.querySelectorAll(".ribbon-thumb").forEach(function (el) {
       var id = el.getAttribute("data-id");
       el.addEventListener("click", function (e) {
-        if (e.target.closest("[data-imgact]")) return;
+        if (e.target.closest("[data-imgact]") || ribbonJustDragged) return;
         navigateToImage(id);
       });
       el.querySelectorAll("[data-imgact]").forEach(function (b) {
@@ -4453,7 +4454,7 @@
         });
       });
     });
-    wireRibbonDnD(strip);
+    wireRibbonPointerDrag(strip);
     // keep the current thumbnail visible without using scrollIntoView
     var cur = strip.querySelector(".is-current");
     if (cur) strip.scrollLeft = Math.max(0, cur.offsetLeft - strip.clientWidth / 2 + cur.clientWidth / 2);
@@ -4503,6 +4504,112 @@
 
   // Horizontal drag-and-drop reordering of the project's images.
   var ribbonDrag = null;
+
+  /* ---- Annotated thumbnails: rendered by the export pipeline, saved with the image ---- */
+  var thumbTimer = null, thumbBusy = false;
+  function renderThumb(cb) {
+    if (!image) return cb(null);
+    var full = document.createElement("canvas"); full.width = image.w; full.height = image.h;
+    var ctx = full.getContext("2d"), base = new Image();
+    base.onload = function () {
+      var cbg = image.canvasBg && image.canvasBg !== "transparent" ? image.canvasBg : null;
+      if (cbg) { ctx.fillStyle = cbg; ctx.fillRect(0, 0, full.width, full.height); }
+      ctx.drawImage(base, image.bx || 0, image.by || 0, image.bw || image.w, image.bh || image.h);
+      var ordered = S.objects.slice().sort(function (a, b) { return (a.z || 0) - (b.z || 0); }), i = 0;
+      (function next() {
+        if (i >= ordered.length) {
+          var tw = Math.min(480, full.width), th = Math.max(1, Math.round(full.height * tw / full.width));
+          var small = document.createElement("canvas"); small.width = tw; small.height = th;
+          var sc = small.getContext("2d"); sc.imageSmoothingQuality = "high"; sc.drawImage(full, 0, 0, tw, th);
+          var url = small.toDataURL("image/webp", 0.82);
+          if (url.indexOf("data:image/webp") !== 0) url = small.toDataURL("image/jpeg", 0.82);   // no WEBP encoder (Safari)
+          cb(url); return;
+        }
+        drawObject(ctx, ordered[i++], next);
+      })();
+    };
+    base.onerror = function () { cb(null); };
+    base.src = image.src;
+  }
+  function needsThumb() { return !!(S.objects.length || !canvasMatches()); }
+  function scheduleThumb(delay) {
+    clearTimeout(thumbTimer);
+    thumbTimer = setTimeout(function () {
+      if (!image || thumbBusy) return;
+      if (!needsThumb()) {   // plain image: the photo itself is the thumbnail
+        if (image.thumb) { image.thumb = null; Store.updateImage(projectId, imageId, { thumb: null }); setRibbonThumb(image.src); }
+        return;
+      }
+      thumbBusy = true;
+      renderThumb(function (url) {
+        thumbBusy = false;
+        if (!url) return;
+        image.thumb = url; Store.updateImage(projectId, imageId, { thumb: url }); setRibbonThumb(url);
+      });
+    }, delay == null ? 900 : delay);
+  }
+  function setRibbonThumb(url) {
+    var el = document.querySelector('.ribbon-thumb[data-id="' + imageId + '"] img'); if (el && url) el.src = url;
+  }
+
+  /* ---- Ribbon reordering with pointer events (HTML5 drag-and-drop is unreliable in embedded views and on touch) ---- */
+  var ribbonJustDragged = false;
+  function wireRibbonPointerDrag(strip) {
+    var items = Array.prototype.slice.call(strip.querySelectorAll(".ribbon-thumb"));
+    items.forEach(function (it) {
+      it.setAttribute("draggable", "false");
+      it.querySelectorAll("img").forEach(function (im) { im.setAttribute("draggable", "false"); });
+      it.addEventListener("dragstart", function (e) { e.preventDefault(); });
+      it.addEventListener("pointerdown", function (e) {
+        if (e.button !== 0 || e.target.closest("[data-imgact]")) return;
+        var sx = e.clientX, sy = e.clientY, dragging = false, ghost = null, marker = null, drop = null, scrollTimer = null;
+        var id = it.getAttribute("data-id"), r0 = it.getBoundingClientRect(), gx = sx - r0.left, gy = sy - r0.top;
+        function begin() {
+          dragging = true; it.classList.add("dragging"); document.body.style.userSelect = "none";
+          ghost = it.cloneNode(true); ghost.classList.remove("dragging", "is-current"); ghost.classList.add("ribbon-ghost");
+          ghost.style.width = r0.width + "px"; ghost.style.height = r0.height + "px"; document.body.appendChild(ghost);
+          marker = document.createElement("div"); marker.className = "ribbon-marker"; document.body.appendChild(marker);
+        }
+        function locate(x) {
+          var best = null;
+          items.forEach(function (n) {
+            if (n === it) return;
+            var r = n.getBoundingClientRect(), mid = r.left + r.width / 2;
+            var d = Math.min(Math.abs(x - r.left), Math.abs(x - r.right), Math.abs(x - mid));
+            if (!best || d < best.d) best = { d: d, el: n, after: x > mid, r: r };
+          });
+          return best;
+        }
+        function edgeScroll(x) {
+          clearInterval(scrollTimer);
+          var sr = strip.getBoundingClientRect(), v = x < sr.left + 40 ? -12 : (x > sr.right - 40 ? 12 : 0);
+          if (v) scrollTimer = setInterval(function () { strip.scrollLeft += v; }, 16);
+        }
+        function mv(ev) {
+          if (!dragging) { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return; begin(); }
+          ghost.style.left = (ev.clientX - gx) + "px"; ghost.style.top = (ev.clientY - gy) + "px";
+          drop = locate(ev.clientX);
+          if (drop) {
+            marker.style.display = "block";
+            marker.style.left = ((drop.after ? drop.r.right : drop.r.left) + (drop.after ? 5 : -7)) + "px";
+            marker.style.top = (drop.r.top + 4) + "px"; marker.style.height = (drop.r.height - 8) + "px";
+          }
+          edgeScroll(ev.clientX);
+        }
+        function up() {
+          document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); document.removeEventListener("pointercancel", up);
+          clearInterval(scrollTimer);
+          if (!dragging) return;
+          it.classList.remove("dragging"); document.body.style.userSelect = "";
+          if (ghost) ghost.remove(); if (marker) marker.remove();
+          ribbonJustDragged = true; setTimeout(function () { ribbonJustDragged = false; }, 0);
+          if (drop) reorderRibbon(id, drop.el.getAttribute("data-id"), drop.after);
+        }
+        document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
+      });
+    });
+  }
+
   function wireRibbonDnD(strip) {
     var items = strip.querySelectorAll(".ribbon-thumb");
     function clearMarks() { items.forEach(function (n) { n.classList.remove("drop-before", "drop-after"); }); }
@@ -5134,6 +5241,7 @@
       applyCanvas();
       drawGrid();
       fitToScreen();
+      if (needsThumb() && !image.thumb) scheduleThumb(1500);
       renderObjects(); wireObjectEvents();
       pushHistory();         // baseline
       renderProps(); renderLayers();

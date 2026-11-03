@@ -54,7 +54,7 @@
     var cards = imgs.map(function (im) {
       var objCount = (im.objects || []).length;
       return '<div class="card img-card" data-id="' + im.id + '">' +
-        '<div class="ic-thumb"><img src="' + im.src + '" alt="">' +
+        '<div class="ic-thumb"><img src="' + (im.thumb || im.src) + '" alt="">' +
           (objCount ? '<span class="ic-badge">' + Icons.svg("tag", { size: 11 }) + objCount + " label" + (objCount === 1 ? "" : "s") + "</span>" : "") +
         "</div>" +
         '<div class="ic-body"><div class="ic-name">' + UI.escapeHtml(im.filename) + "</div>" +

@@ -1127,6 +1127,13 @@ html.is-navigating::after { content: ""; position: fixed; left: 0; top: 0; heigh
 .ah-btn { display: grid; place-items: center; height: 30px; padding: 0; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-2); border-radius: 6px; cursor: pointer; }
 .ah-btn:hover { border-color: var(--accent-400, #33BEF2); color: var(--text); }
 .ah-btn.on { background: var(--accent-soft, rgba(0,174,239,.15)); border-color: var(--accent-400, #33BEF2); color: var(--accent-400, #33BEF2); }
+
+/* Ribbon drag: floating copy + insertion line */
+.ribbon-ghost { position: fixed; z-index: 9999; pointer-events: none; opacity: .9; transform: scale(1.04) rotate(-1.5deg);
+  box-shadow: 0 14px 34px rgba(0,0,0,.45); border-color: var(--accent-400) !important; }
+.ribbon-marker { position: fixed; z-index: 9998; width: 3px; border-radius: 2px; background: var(--accent-400, #33BEF2); pointer-events: none;
+  box-shadow: 0 0 8px rgba(51,190,242,.8); display: none; }
+.ribbon-thumb { touch-action: pan-y; }
 </style>
 <script async id="lucideLib" src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 <script async src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -1487,7 +1494,7 @@ window.__PAGES["project"] = { title: "Project \u00b7 Horizon Caption Studio", bo
     var cards = imgs.map(function (im) {
       var objCount = (im.objects || []).length;
       return '<div class="card img-card" data-id="' + im.id + '">' +
-        '<div class="ic-thumb"><img src="' + im.src + '" alt="">' +
+        '<div class="ic-thumb"><img src="' + (im.thumb || im.src) + '" alt="">' +
           (objCount ? '<span class="ic-badge">' + Icons.svg("tag", { size: 11 }) + objCount + " label" + (objCount === 1 ? "" : "s") + "</span>" : "") +
         "</div>" +
         '<div class="ic-body"><div class="ic-name">' + UI.escapeHtml(im.filename) + "</div>" +
@@ -5529,6 +5536,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
     Store.saveImageObjects(projectId, imageId, S.objects);
     Store.pushRecent({ projectId: projectId, imageId: imageId, filename: image.filename, projectName: project.name });
     S.dirty = false;
+    scheduleThumb();
     setTimeout(function () { setAutosaveState("", "Saved"); }, 350);
     if (!silent) UI.toast({ type: "success", title: "Saved", duration: 1400 });
   }
@@ -6045,7 +6053,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
     $("imgRibbon").classList.remove("empty");
     strip.innerHTML = project.images.map(function (im, i) {
       return '<div class="ribbon-thumb' + (im.id === imageId ? " is-current" : "") + '" data-id="' + im.id + '" draggable="true" title="' + UI.escapeHtml(im.filename) + '">' +
-        '<img src="' + im.src + '" alt="">' +
+        '<img src="' + (im.thumb || im.src) + '" alt="">' +
         '<span class="rt-num">' + (i + 1) + "</span>" +
         '<span class="rt-acts">' +
           '<button class="rt-act" data-imgact="dup" title="Duplicate image">' + Icons.svg("copy", { size: 12 }) + "</button>" +
@@ -6056,7 +6064,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
     strip.querySelectorAll(".ribbon-thumb").forEach(function (el) {
       var id = el.getAttribute("data-id");
       el.addEventListener("click", function (e) {
-        if (e.target.closest("[data-imgact]")) return;
+        if (e.target.closest("[data-imgact]") || ribbonJustDragged) return;
         navigateToImage(id);
       });
       el.querySelectorAll("[data-imgact]").forEach(function (b) {
@@ -6069,7 +6077,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
         });
       });
     });
-    wireRibbonDnD(strip);
+    wireRibbonPointerDrag(strip);
     // keep the current thumbnail visible without using scrollIntoView
     var cur = strip.querySelector(".is-current");
     if (cur) strip.scrollLeft = Math.max(0, cur.offsetLeft - strip.clientWidth / 2 + cur.clientWidth / 2);
@@ -6119,6 +6127,112 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
 
   // Horizontal drag-and-drop reordering of the project's images.
   var ribbonDrag = null;
+
+  /* ---- Annotated thumbnails: rendered by the export pipeline, saved with the image ---- */
+  var thumbTimer = null, thumbBusy = false;
+  function renderThumb(cb) {
+    if (!image) return cb(null);
+    var full = document.createElement("canvas"); full.width = image.w; full.height = image.h;
+    var ctx = full.getContext("2d"), base = new Image();
+    base.onload = function () {
+      var cbg = image.canvasBg && image.canvasBg !== "transparent" ? image.canvasBg : null;
+      if (cbg) { ctx.fillStyle = cbg; ctx.fillRect(0, 0, full.width, full.height); }
+      ctx.drawImage(base, image.bx || 0, image.by || 0, image.bw || image.w, image.bh || image.h);
+      var ordered = S.objects.slice().sort(function (a, b) { return (a.z || 0) - (b.z || 0); }), i = 0;
+      (function next() {
+        if (i >= ordered.length) {
+          var tw = Math.min(480, full.width), th = Math.max(1, Math.round(full.height * tw / full.width));
+          var small = document.createElement("canvas"); small.width = tw; small.height = th;
+          var sc = small.getContext("2d"); sc.imageSmoothingQuality = "high"; sc.drawImage(full, 0, 0, tw, th);
+          var url = small.toDataURL("image/webp", 0.82);
+          if (url.indexOf("data:image/webp") !== 0) url = small.toDataURL("image/jpeg", 0.82);   // no WEBP encoder (Safari)
+          cb(url); return;
+        }
+        drawObject(ctx, ordered[i++], next);
+      })();
+    };
+    base.onerror = function () { cb(null); };
+    base.src = image.src;
+  }
+  function needsThumb() { return !!(S.objects.length || !canvasMatches()); }
+  function scheduleThumb(delay) {
+    clearTimeout(thumbTimer);
+    thumbTimer = setTimeout(function () {
+      if (!image || thumbBusy) return;
+      if (!needsThumb()) {   // plain image: the photo itself is the thumbnail
+        if (image.thumb) { image.thumb = null; Store.updateImage(projectId, imageId, { thumb: null }); setRibbonThumb(image.src); }
+        return;
+      }
+      thumbBusy = true;
+      renderThumb(function (url) {
+        thumbBusy = false;
+        if (!url) return;
+        image.thumb = url; Store.updateImage(projectId, imageId, { thumb: url }); setRibbonThumb(url);
+      });
+    }, delay == null ? 900 : delay);
+  }
+  function setRibbonThumb(url) {
+    var el = document.querySelector('.ribbon-thumb[data-id="' + imageId + '"] img'); if (el && url) el.src = url;
+  }
+
+  /* ---- Ribbon reordering with pointer events (HTML5 drag-and-drop is unreliable in embedded views and on touch) ---- */
+  var ribbonJustDragged = false;
+  function wireRibbonPointerDrag(strip) {
+    var items = Array.prototype.slice.call(strip.querySelectorAll(".ribbon-thumb"));
+    items.forEach(function (it) {
+      it.setAttribute("draggable", "false");
+      it.querySelectorAll("img").forEach(function (im) { im.setAttribute("draggable", "false"); });
+      it.addEventListener("dragstart", function (e) { e.preventDefault(); });
+      it.addEventListener("pointerdown", function (e) {
+        if (e.button !== 0 || e.target.closest("[data-imgact]")) return;
+        var sx = e.clientX, sy = e.clientY, dragging = false, ghost = null, marker = null, drop = null, scrollTimer = null;
+        var id = it.getAttribute("data-id"), r0 = it.getBoundingClientRect(), gx = sx - r0.left, gy = sy - r0.top;
+        function begin() {
+          dragging = true; it.classList.add("dragging"); document.body.style.userSelect = "none";
+          ghost = it.cloneNode(true); ghost.classList.remove("dragging", "is-current"); ghost.classList.add("ribbon-ghost");
+          ghost.style.width = r0.width + "px"; ghost.style.height = r0.height + "px"; document.body.appendChild(ghost);
+          marker = document.createElement("div"); marker.className = "ribbon-marker"; document.body.appendChild(marker);
+        }
+        function locate(x) {
+          var best = null;
+          items.forEach(function (n) {
+            if (n === it) return;
+            var r = n.getBoundingClientRect(), mid = r.left + r.width / 2;
+            var d = Math.min(Math.abs(x - r.left), Math.abs(x - r.right), Math.abs(x - mid));
+            if (!best || d < best.d) best = { d: d, el: n, after: x > mid, r: r };
+          });
+          return best;
+        }
+        function edgeScroll(x) {
+          clearInterval(scrollTimer);
+          var sr = strip.getBoundingClientRect(), v = x < sr.left + 40 ? -12 : (x > sr.right - 40 ? 12 : 0);
+          if (v) scrollTimer = setInterval(function () { strip.scrollLeft += v; }, 16);
+        }
+        function mv(ev) {
+          if (!dragging) { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return; begin(); }
+          ghost.style.left = (ev.clientX - gx) + "px"; ghost.style.top = (ev.clientY - gy) + "px";
+          drop = locate(ev.clientX);
+          if (drop) {
+            marker.style.display = "block";
+            marker.style.left = ((drop.after ? drop.r.right : drop.r.left) + (drop.after ? 5 : -7)) + "px";
+            marker.style.top = (drop.r.top + 4) + "px"; marker.style.height = (drop.r.height - 8) + "px";
+          }
+          edgeScroll(ev.clientX);
+        }
+        function up() {
+          document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); document.removeEventListener("pointercancel", up);
+          clearInterval(scrollTimer);
+          if (!dragging) return;
+          it.classList.remove("dragging"); document.body.style.userSelect = "";
+          if (ghost) ghost.remove(); if (marker) marker.remove();
+          ribbonJustDragged = true; setTimeout(function () { ribbonJustDragged = false; }, 0);
+          if (drop) reorderRibbon(id, drop.el.getAttribute("data-id"), drop.after);
+        }
+        document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
+      });
+    });
+  }
+
   function wireRibbonDnD(strip) {
     var items = strip.querySelectorAll(".ribbon-thumb");
     function clearMarks() { items.forEach(function (n) { n.classList.remove("drop-before", "drop-after"); }); }
@@ -6750,6 +6864,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
       applyCanvas();
       drawGrid();
       fitToScreen();
+      if (needsThumb() && !image.thumb) scheduleThumb(1500);
       renderObjects(); wireObjectEvents();
       pushHistory();         // baseline
       renderProps(); renderLayers();
@@ -7396,8 +7511,9 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
         if (coll === "projects") return { name: r.name, description: r.description || "", createdAt: ms(r.created_at), updatedAt: ms(r.updated_at) };
         if (coll === "images") {
           var objs = Array.isArray(r.objects) ? r.objects : [], meta = objs.filter(function (x) { return x && x.type === "__canvas"; })[0];
+          var tmeta = objs.filter(function (x) { return x && x.type === "__thumb"; })[0];
           return { projectId: r.project_id, filename: r.filename || "image", w: r.w || 0, h: r.h || 0,
-            objects: objs.filter(function (x) { return !(x && x.type === "__canvas"); }), canvas: meta ? meta.canvas : null,
+            objects: objs.filter(function (x) { return !(x && (x.type === "__canvas" || x.type === "__thumb")); }), canvas: meta ? meta.canvas : null, thumb: tmeta ? tmeta.src : null,
           assetId: r.storage_path || null, sizeBytes: sizes[r.storage_path] || 0, sortIndex: r.sort_index || 0, createdAt: ms(r.created_at), updatedAt: ms(r.updated_at) };
         }
         return { name: r.name || "Asset", w: r.w || 0, h: r.h || 0, assetId: r.storage_path || null, sizeBytes: sizes[r.storage_path] || 0, createdAt: ms(r.created_at) };
@@ -7405,7 +7521,7 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
       function toRow(coll, id, d) {
         if (coll === "projects") return { id: id, name: d.name, description: d.description || "", created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
         if (coll === "images") return { id: id, project_id: d.projectId, filename: d.filename || "image", w: Math.round(d.w || 0), h: Math.round(d.h || 0),
-          objects: (d.objects || []).concat(d.canvas ? [{ type: "__canvas", canvas: d.canvas }] : []), storage_path: d.assetId || null, sort_index: d.sortIndex || 0, created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
+          objects: (d.objects || []).concat(d.canvas ? [{ type: "__canvas", canvas: d.canvas }] : []).concat(d.thumb ? [{ type: "__thumb", src: d.thumb }] : []), storage_path: d.assetId || null, sort_index: d.sortIndex || 0, created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
         return { id: id, name: d.name || "Asset", w: Math.round(d.w || 0), h: Math.round(d.h || 0), storage_path: d.assetId || null, created_at: iso(d.createdAt) };
       }
       function remember(path, blob) { var u = URL.createObjectURL(blob); urls[path] = u; ids[u] = path; sizes[path] = blob.size; return u; }
@@ -7789,7 +7905,7 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
     images.forEach(function (im) {
       var cp = byProj[im.projectId]; if (!cp) return;
       if (im.assetId) { ASSET[im.id] = im.assetId; if (im.sizeBytes) SIZE[im.assetId] = im.sizeBytes; }
-      cp.images.push({ id: im.id, filename: im.filename || "image", w: im.w || 0, h: im.h || 0, addedAt: im.createdAt || Date.now(), updatedAt: im.updatedAt || Date.now(), objects: decodeObjects(im.objects || []), canvas: im.canvas || null });
+      cp.images.push({ id: im.id, filename: im.filename || "image", w: im.w || 0, h: im.h || 0, addedAt: im.createdAt || Date.now(), updatedAt: im.updatedAt || Date.now(), objects: decodeObjects(im.objects || []), canvas: im.canvas || null, thumb: im.thumb || null });
     });
     brand.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     _brand = brand.map(function (a) {
@@ -7837,7 +7953,7 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
       o.src = srcOf(im.id);
       return o;
     });
-    q.thumbnail = q.images.length ? (q.images[0].src || null) : null;
+    q.thumbnail = q.images.length ? (q.images[0].thumb || q.images[0].src || null) : null;
     return q;
   }
   function srcOf(id) { return IMG[id] || (ASSET[id] ? BLOB(ASSET[id]) : ""); }
@@ -7870,7 +7986,7 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
       return {
         projectId: projectId, filename: im.filename, w: im.w, h: im.h, objects: objects,
         assetId: ASSET[imageId] || null, sizeBytes: SIZE[ASSET[imageId]] || 0, sortIndex: i, createdAt: im.addedAt, updatedAt: im.updatedAt,
-        canvas: im.canvas || null
+        canvas: im.canvas || null, thumb: im.thumb || null
       };
     });
   }
@@ -7937,7 +8053,7 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
     var copy = { id: uid("prj"), name: src.name + " copy", description: src.description, thumbnail: null, createdAt: now, updatedAt: now, images: [] };
     src.images.forEach(function (im) {
       var nid = uid("img");
-      copy.images.push({ id: nid, filename: im.filename, w: im.w, h: im.h, addedAt: now, updatedAt: now, objects: clone(im.objects), canvas: im.canvas ? clone(im.canvas) : null });
+      copy.images.push({ id: nid, filename: im.filename, w: im.w, h: im.h, addedAt: now, updatedAt: now, objects: clone(im.objects), canvas: im.canvas ? clone(im.canvas) : null, thumb: im.thumb || null });
       copyBytes(im.id, nid);
     });
     _projects.splice(idx + 1, 0, copy);
@@ -7973,7 +8089,7 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
     var i = imgIndex(p, imageId); if (i < 0) return null;
     var im = p.images[i];
     for (var k in patch) {
-      if (k === "src") { IMG[imageId] = patch.src; NEEDUP[imageId] = true; }
+      if (k === "src") { IMG[imageId] = patch.src; NEEDUP[imageId] = true; if (!("thumb" in patch)) im.thumb = null; }
       else if (k !== "id") im[k] = patch[k];
     }
     im.updatedAt = Date.now();
@@ -7996,7 +8112,7 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
     var p = findCache(projectId); if (!p) return null;
     var idx = imgIndex(p, imageId); if (idx < 0) return null;
     var src = p.images[idx], now = Date.now(), nid = uid("img");
-    var copy = { id: nid, filename: (src.filename || "image").replace(/(\.[^.]+)?$/, " copy$1"), w: src.w, h: src.h, addedAt: now, updatedAt: now, objects: clone(src.objects), canvas: src.canvas ? clone(src.canvas) : null };
+    var copy = { id: nid, filename: (src.filename || "image").replace(/(\.[^.]+)?$/, " copy$1"), w: src.w, h: src.h, addedAt: now, updatedAt: now, objects: clone(src.objects), canvas: src.canvas ? clone(src.canvas) : null, thumb: src.thumb || null };
     copyBytes(imageId, nid);
     p.images.splice(idx + 1, 0, copy);
     touch(p);

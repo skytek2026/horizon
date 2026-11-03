@@ -83,8 +83,9 @@
         if (coll === "projects") return { name: r.name, description: r.description || "", createdAt: ms(r.created_at), updatedAt: ms(r.updated_at) };
         if (coll === "images") {
           var objs = Array.isArray(r.objects) ? r.objects : [], meta = objs.filter(function (x) { return x && x.type === "__canvas"; })[0];
+          var tmeta = objs.filter(function (x) { return x && x.type === "__thumb"; })[0];
           return { projectId: r.project_id, filename: r.filename || "image", w: r.w || 0, h: r.h || 0,
-            objects: objs.filter(function (x) { return !(x && x.type === "__canvas"); }), canvas: meta ? meta.canvas : null,
+            objects: objs.filter(function (x) { return !(x && (x.type === "__canvas" || x.type === "__thumb")); }), canvas: meta ? meta.canvas : null, thumb: tmeta ? tmeta.src : null,
           assetId: r.storage_path || null, sizeBytes: sizes[r.storage_path] || 0, sortIndex: r.sort_index || 0, createdAt: ms(r.created_at), updatedAt: ms(r.updated_at) };
         }
         return { name: r.name || "Asset", w: r.w || 0, h: r.h || 0, assetId: r.storage_path || null, sizeBytes: sizes[r.storage_path] || 0, createdAt: ms(r.created_at) };
@@ -92,7 +93,7 @@
       function toRow(coll, id, d) {
         if (coll === "projects") return { id: id, name: d.name, description: d.description || "", created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
         if (coll === "images") return { id: id, project_id: d.projectId, filename: d.filename || "image", w: Math.round(d.w || 0), h: Math.round(d.h || 0),
-          objects: (d.objects || []).concat(d.canvas ? [{ type: "__canvas", canvas: d.canvas }] : []), storage_path: d.assetId || null, sort_index: d.sortIndex || 0, created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
+          objects: (d.objects || []).concat(d.canvas ? [{ type: "__canvas", canvas: d.canvas }] : []).concat(d.thumb ? [{ type: "__thumb", src: d.thumb }] : []), storage_path: d.assetId || null, sort_index: d.sortIndex || 0, created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
         return { id: id, name: d.name || "Asset", w: Math.round(d.w || 0), h: Math.round(d.h || 0), storage_path: d.assetId || null, created_at: iso(d.createdAt) };
       }
       function remember(path, blob) { var u = URL.createObjectURL(blob); urls[path] = u; ids[u] = path; sizes[path] = blob.size; return u; }
@@ -476,7 +477,7 @@
     images.forEach(function (im) {
       var cp = byProj[im.projectId]; if (!cp) return;
       if (im.assetId) { ASSET[im.id] = im.assetId; if (im.sizeBytes) SIZE[im.assetId] = im.sizeBytes; }
-      cp.images.push({ id: im.id, filename: im.filename || "image", w: im.w || 0, h: im.h || 0, addedAt: im.createdAt || Date.now(), updatedAt: im.updatedAt || Date.now(), objects: decodeObjects(im.objects || []), canvas: im.canvas || null });
+      cp.images.push({ id: im.id, filename: im.filename || "image", w: im.w || 0, h: im.h || 0, addedAt: im.createdAt || Date.now(), updatedAt: im.updatedAt || Date.now(), objects: decodeObjects(im.objects || []), canvas: im.canvas || null, thumb: im.thumb || null });
     });
     brand.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     _brand = brand.map(function (a) {
@@ -524,7 +525,7 @@
       o.src = srcOf(im.id);
       return o;
     });
-    q.thumbnail = q.images.length ? (q.images[0].src || null) : null;
+    q.thumbnail = q.images.length ? (q.images[0].thumb || q.images[0].src || null) : null;
     return q;
   }
   function srcOf(id) { return IMG[id] || (ASSET[id] ? BLOB(ASSET[id]) : ""); }
@@ -557,7 +558,7 @@
       return {
         projectId: projectId, filename: im.filename, w: im.w, h: im.h, objects: objects,
         assetId: ASSET[imageId] || null, sizeBytes: SIZE[ASSET[imageId]] || 0, sortIndex: i, createdAt: im.addedAt, updatedAt: im.updatedAt,
-        canvas: im.canvas || null
+        canvas: im.canvas || null, thumb: im.thumb || null
       };
     });
   }
@@ -624,7 +625,7 @@
     var copy = { id: uid("prj"), name: src.name + " copy", description: src.description, thumbnail: null, createdAt: now, updatedAt: now, images: [] };
     src.images.forEach(function (im) {
       var nid = uid("img");
-      copy.images.push({ id: nid, filename: im.filename, w: im.w, h: im.h, addedAt: now, updatedAt: now, objects: clone(im.objects), canvas: im.canvas ? clone(im.canvas) : null });
+      copy.images.push({ id: nid, filename: im.filename, w: im.w, h: im.h, addedAt: now, updatedAt: now, objects: clone(im.objects), canvas: im.canvas ? clone(im.canvas) : null, thumb: im.thumb || null });
       copyBytes(im.id, nid);
     });
     _projects.splice(idx + 1, 0, copy);
@@ -660,7 +661,7 @@
     var i = imgIndex(p, imageId); if (i < 0) return null;
     var im = p.images[i];
     for (var k in patch) {
-      if (k === "src") { IMG[imageId] = patch.src; NEEDUP[imageId] = true; }
+      if (k === "src") { IMG[imageId] = patch.src; NEEDUP[imageId] = true; if (!("thumb" in patch)) im.thumb = null; }
       else if (k !== "id") im[k] = patch[k];
     }
     im.updatedAt = Date.now();
@@ -683,7 +684,7 @@
     var p = findCache(projectId); if (!p) return null;
     var idx = imgIndex(p, imageId); if (idx < 0) return null;
     var src = p.images[idx], now = Date.now(), nid = uid("img");
-    var copy = { id: nid, filename: (src.filename || "image").replace(/(\.[^.]+)?$/, " copy$1"), w: src.w, h: src.h, addedAt: now, updatedAt: now, objects: clone(src.objects), canvas: src.canvas ? clone(src.canvas) : null };
+    var copy = { id: nid, filename: (src.filename || "image").replace(/(\.[^.]+)?$/, " copy$1"), w: src.w, h: src.h, addedAt: now, updatedAt: now, objects: clone(src.objects), canvas: src.canvas ? clone(src.canvas) : null, thumb: src.thumb || null };
     copyBytes(imageId, nid);
     p.images.splice(idx + 1, 0, copy);
     touch(p);

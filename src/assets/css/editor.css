@@ -521,3 +521,10 @@
 .ah-btn { display: grid; place-items: center; height: 30px; padding: 0; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-2); border-radius: 6px; cursor: pointer; }
 .ah-btn:hover { border-color: var(--accent-400, #33BEF2); color: var(--text); }
 .ah-btn.on { background: var(--accent-soft, rgba(0,174,239,.15)); border-color: var(--accent-400, #33BEF2); color: var(--accent-400, #33BEF2); }
+
+/* Ribbon drag: floating copy + insertion line */
+.ribbon-ghost { position: fixed; z-index: 9999; pointer-events: none; opacity: .9; transform: scale(1.04) rotate(-1.5deg);
+  box-shadow: 0 14px 34px rgba(0,0,0,.45); border-color: var(--accent-400) !important; }
+.ribbon-marker { position: fixed; z-index: 9998; width: 3px; border-radius: 2px; background: var(--accent-400, #33BEF2); pointer-events: none;
+  box-shadow: 0 0 8px rgba(51,190,242,.8); display: none; }
+.ribbon-thumb { touch-action: pan-y; }
