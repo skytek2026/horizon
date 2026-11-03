@@ -395,12 +395,14 @@
         if (o.media === "upload" && o.image) {
           prims.push({ t: "image", x: 0, y: L.mediaY, w: w, h: L.mediaH, src: o.image, natW: o.imgW || w, natH: o.imgH || L.mediaH });
         } else if (o.media === "zoom" && image && image.src) {
+          // the zoom reads the image's own pixels: convert from canvas coordinates
+          var BX = image.bx || 0, BY = image.by || 0, BW = image.bw || image.w, BH = image.bh || image.h;
           var z = Math.max(1, o.zoom || 4), sw = w / z, sh = L.mediaH / z;
-          var cx = o.zoomX != null ? o.zoomX : image.w / 2, cy = o.zoomY != null ? o.zoomY : image.h / 2;
-          var sx = Math.max(0, Math.min(image.w - sw, cx - sw / 2)), sy = Math.max(0, Math.min(image.h - sh, cy - sh / 2));
+          var cx = (o.zoomX != null ? o.zoomX : image.w / 2) - BX, cy = (o.zoomY != null ? o.zoomY : image.h / 2) - BY;
+          var sx = Math.max(0, Math.min(BW - sw, cx - sw / 2)), sy = Math.max(0, Math.min(BH - sh, cy - sh / 2));
           prims.push({ t: "path", d: pRect(0, L.mediaY, w, L.mediaH, 0), fill: "#000" });
-          prims.push({ t: "image", x: 0, y: L.mediaY, w: w, h: L.mediaH, src: image.src, natW: image.w, natH: image.h,
-                       crop: { sx: sx, sy: sy, sw: Math.min(sw, image.w), sh: Math.min(sh, image.h) } });
+          prims.push({ t: "image", x: 0, y: L.mediaY, w: w, h: L.mediaH, src: image.src, natW: BW, natH: BH,
+                       crop: { sx: sx, sy: sy, sw: Math.min(sw, BW), sh: Math.min(sh, BH) } });
         }
       }
       return prims.concat(L.content);
@@ -1352,9 +1354,202 @@
     zoomAt(1 / S.zoom, rect.left + rect.width / 2, rect.top + rect.height / 2);
   }
 
+  /* ---- Canvas: its own size, the image's position on it, and a background ---- */
+  // image.bw/bh = the image's pixels; image.w/h = canvas size (stage, guides, export, fit);
+  // image.bx/by = where the image sits on the canvas.
+  function canvasOf(img) { var c = img && img.canvas; return (c && c.w > 0 && c.h > 0) ? c : null; }
+  function applyCanvas() {
+    if (!image) return;
+    var c = canvasOf(image) || { w: image.bw, h: image.bh, x: 0, y: 0, bg: "transparent" };
+    image.w = Math.round(c.w); image.h = Math.round(c.h);
+    image.bx = Math.round(c.x || 0); image.by = Math.round(c.y || 0);
+    image.canvasBg = c.bg || "transparent";
+    stage.style.width = image.w + "px"; stage.style.height = image.h + "px";
+    stageImg.style.left = image.bx + "px"; stageImg.style.top = image.by + "px";
+    stageImg.style.width = image.bw + "px"; stageImg.style.height = image.bh + "px";
+    stage.classList.toggle("canvas-transparent", image.canvasBg === "transparent");
+    stage.style.backgroundColor = image.canvasBg === "transparent" ? "" : image.canvasBg;
+  }
+  function canvasMatches() { return image && image.w === image.bw && image.h === image.bh && !image.bx && !image.by; }
+  function setCanvas(nc) {
+    var ox = image.bx || 0, oy = image.by || 0;
+    if (nc && nc.w === image.bw && nc.h === image.bh && !nc.x && !nc.y && (!nc.bg || nc.bg === "transparent")) nc = null;  // same as the image
+    image.canvas = nc;
+    applyCanvas();
+    var dx = (image.bx || 0) - ox, dy = (image.by || 0) - oy;   // annotations stay attached to the image
+    if (dx || dy) S.objects.forEach(function (o) { o.x = (o.x || 0) + dx; o.y = (o.y || 0) + dy; });
+    Store.updateImage(projectId, imageId, { canvas: nc });
+    drawGrid(); fitToScreen(); renderObjects(); wireObjectEvents(); renderLayers(); renderProps(); layoutCvOverlay();
+    pushHistory(); markDirty();
+  }
+  function restoreSnap(state) {
+    var st = JSON.parse(state);
+    if (Array.isArray(st)) { S.objects = st; return; }
+    S.objects = st.o || [];
+    if (image && JSON.stringify(canvasOf(image)) !== JSON.stringify(st.c || null)) {
+      image.canvas = st.c || null; applyCanvas(); Store.updateImage(projectId, imageId, { canvas: image.canvas }); drawGrid(); fitToScreen(); layoutCvOverlay();
+    }
+  }
+  function canvasPanelHTML() {
+    if (!image) return "";
+    var c = canvasOf(image) || { w: image.bw, h: image.bh, x: 0, y: 0, ax: 0.5, ay: 0.5, bg: "transparent" };
+    var ax = c.ax !== undefined ? c.ax : 0.5, ay = c.ay !== undefined ? c.ay : 0.5, bg = c.bg || "transparent";
+    var grid = "";
+    [0, 0.5, 1].forEach(function (yy) { [0, 0.5, 1].forEach(function (xx) {
+      grid += '<button class="cv-cell' + (xx === ax && yy === ay ? " on" : "") + '" data-cvanchor="' + xx + "," + yy + '" title="Image position"><span></span></button>';
+    }); });
+    var sw = SWATCHES.map(function (col) {
+      return '<div class="color-sw' + (bg.toLowerCase() === col.toLowerCase() ? " on" : "") + '" data-cvcolor="' + col + '" style="background:' + col + '"></div>';
+    }).join("") + '<label class="color-sw custom" title="Custom colour" style="position:relative;overflow:hidden">' + Icons.svg("plus", { size: 13 }) +
+      '<input type="color" data-cvcustom="1" value="' + (bg !== "transparent" ? bg : "#ffffff") + '" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>';
+    var hint = 'style="margin:2px 0 8px;font-size:11.5px;line-height:1.45;color:var(--text-3,#7f8ea3)"';
+    return '<div class="prop-group"><h4>Canvas</h4>' +
+      '<div class="prop-row"><label>Width</label><div class="ctrl"><input class="input" type="number" data-cv="w" value="' + Math.round(c.w) + '" min="16" max="20000"></div></div>' +
+      '<div class="prop-row"><label>Height</label><div class="ctrl"><input class="input" type="number" data-cv="h" value="' + Math.round(c.h) + '" min="16" max="20000"></div></div>' +
+      '<p class="layers-hint" ' + hint + '>Image: ' + image.bw + " × " + image.bh + " px" + (canvasMatches() ? " · canvas matches the image" : "") + "</p>" +
+      '<div class="prop-row" style="gap:6px"><button class="view-btn' + (cvMode ? " on" : "") + '" data-cvact="tool" style="flex:1">' + Icons.svg(cvMode ? "check" : "edit", { size: 14 }) + (cvMode ? "Done" : "Edit on canvas") + "</button>" +
+      '<button class="view-btn" data-cvact="match" style="flex:1"' + (canvasMatches() ? " disabled" : "") + ">" + Icons.svg("reset", { size: 14 }) + "Match image</button></div>" +
+      '<div class="prop-row" style="align-items:flex-start"><label>Image position</label><div class="ctrl"><div class="cv-anchor">' + grid + "</div></div></div>" +
+      "</div>" +
+      '<div class="prop-group"><h4>Background</h4>' +
+      '<div class="prop-row"><label>Fill</label><div class="ctrl seg2"><button data-cvbg="transparent" class="' + (bg === "transparent" ? "on" : "") + '">Transparent</button>' +
+      '<button data-cvbg="color" class="' + (bg !== "transparent" ? "on" : "") + '">Colour</button></div></div>' +
+      (bg !== "transparent" ? '<div class="prop-row"><div class="ctrl"><div class="color-swatches">' + sw + "</div></div></div>" : "") +
+      "</div>";
+  }
+  function wireCanvasPanel(panel) {
+    if (!image) return;
+    function cur() { var c = canvasOf(image); return c ? JSON.parse(JSON.stringify(c)) : { w: image.bw, h: image.bh, x: 0, y: 0, ax: 0.5, ay: 0.5, bg: "transparent" }; }
+    function place(c) {   // position the image on the canvas from the anchor (a dragged position has none)
+      if (c.ax != null) c.x = Math.round((c.w - image.bw) * c.ax);
+      if (c.ay != null) c.y = Math.round((c.h - image.bh) * c.ay);
+      return c;
+    }
+    panel.querySelectorAll("[data-cv]").forEach(function (inp) {
+      inp.addEventListener("change", function () {
+        var v = Math.round(+inp.value); if (!(v >= 16)) { inp.value = inp.getAttribute("data-cv") === "w" ? image.w : image.h; return; }
+        var c = cur(); c[inp.getAttribute("data-cv")] = Math.min(20000, v); setCanvas(place(c));
+      });
+    });
+    var tl = panel.querySelector('[data-cvact="tool"]'); if (tl) tl.addEventListener("click", toggleCanvasMode);
+    var m = panel.querySelector('[data-cvact="match"]'); if (m) m.addEventListener("click", function () {
+      var c = cur(); setCanvas(c.bg && c.bg !== "transparent" ? { w: image.bw, h: image.bh, x: 0, y: 0, ax: 0.5, ay: 0.5, bg: c.bg } : null);
+    });
+    panel.querySelectorAll("[data-cvanchor]").forEach(function (b) {
+      b.addEventListener("click", function () { var a = b.getAttribute("data-cvanchor").split(","), c = cur(); c.ax = +a[0]; c.ay = +a[1]; setCanvas(place(c)); });
+    });
+    panel.querySelectorAll("[data-cvbg]").forEach(function (b) {
+      b.addEventListener("click", function () { var c = cur(); c.bg = b.getAttribute("data-cvbg") === "transparent" ? "transparent" : (c.bg && c.bg !== "transparent" ? c.bg : "#ffffff"); setCanvas(place(c)); });
+    });
+    panel.querySelectorAll("[data-cvcolor]").forEach(function (s) {
+      s.addEventListener("click", function () { var c = cur(); c.bg = s.getAttribute("data-cvcolor"); setCanvas(place(c)); });
+    });
+    var cc = panel.querySelector("[data-cvcustom]"); if (cc) cc.addEventListener("change", function () { var c = cur(); c.bg = cc.value; setCanvas(place(c)); });
+  }
+
+  /* ---- Canvas tool: drag handles to resize the canvas, drag the image to move it ---- */
+  var cvMode = false, cvOverlay = null;
+  function enterCanvasMode() {
+    if (!image) { UI.toast({ type: "warning", title: "Upload an image first" }); return; }
+    if (typeof cropMode !== "undefined" && cropMode) exitCropMode();
+    if (drawMode) setDrawMode(false);
+    deselect(); cvMode = true;
+    canvasWrap.classList.add("canvas-mode"); var b = $("btnCanvas"); if (b) b.classList.add("is-active");
+    buildCvOverlay(); cvEnsureVisible(); renderProps();
+    UI.toast({ type: "info", title: "Canvas", desc: "Drag the edges to resize · drag the image to move it · Esc when done.", duration: 3200 });
+  }
+  function exitCanvasMode() {
+    cvMode = false;
+    if (cvOverlay) { cvOverlay.remove(); cvOverlay = null; }
+    canvasWrap.classList.remove("canvas-mode"); var b = $("btnCanvas"); if (b) b.classList.remove("is-active");
+    renderProps();
+  }
+  // keep every handle reachable: re-fit the view if the canvas runs outside the visible area
+  function cvEnsureVisible() {
+    var r = stage.getBoundingClientRect(), v = canvasWrap.getBoundingClientRect(), m = 24;
+    if (r.left < v.left + m || r.top < v.top + m || r.right > v.right - m || r.bottom > v.bottom - m) fitToScreen();
+  }
+  function toggleCanvasMode() { if (cvMode) exitCanvasMode(); else enterCanvasMode(); }
+  function cvState() { var c = canvasOf(image); return { w: image.w, h: image.h, x: image.bx || 0, y: image.by || 0, bg: (c && c.bg) || "transparent" }; }
+  function anchorOf(off, cw, iw) {
+    var free = cw - iw; if (Math.abs(free) < 1) return 0.5;
+    var r = off / free, hit = null; [0, 0.5, 1].forEach(function (v) { if (Math.abs(r - v) < 0.002) hit = v; }); return hit;
+  }
+  function cvApplyLive(c, pan) {
+    image.canvas = { w: c.w, h: c.h, x: c.x, y: c.y, ax: anchorOf(c.x, c.w, image.bw), ay: anchorOf(c.y, c.h, image.bh), bg: c.bg };
+    applyCanvas();
+    if (pan) { S.panX = pan.x; S.panY = pan.y; applyTransform(); }
+  }
+  function buildCvOverlay() {
+    cvOverlay = document.createElement("div"); cvOverlay.id = "cvOverlay";
+    cvOverlay.innerHTML = '<div class="cv-frame"></div><div class="cv-img" title="Drag to move the image"></div>' +
+      ["nw", "n", "ne", "e", "se", "s", "sw", "w"].map(function (h) { return '<div class="cv-h cv-' + h + '" data-cvh="' + h + '" title="Drag to resize the canvas"></div>'; }).join("") +
+      '<div class="cv-size"></div>';
+    stage.appendChild(cvOverlay);
+    cvOverlay.querySelectorAll("[data-cvh]").forEach(function (h) { h.addEventListener("pointerdown", function (e) { startCvResize(e, h.getAttribute("data-cvh")); }); });
+    cvOverlay.querySelector(".cv-img").addEventListener("pointerdown", startCvMove);
+    layoutCvOverlay();
+  }
+  function layoutCvOverlay(snapped) {
+    if (!cvOverlay || !image) return;
+    var im = cvOverlay.querySelector(".cv-img");
+    im.style.left = image.bx + "px"; im.style.top = image.by + "px"; im.style.width = image.bw + "px"; im.style.height = image.bh + "px";
+    var match = image.w === image.bw && image.h === image.bh;
+    cvOverlay.querySelector(".cv-size").textContent = image.w + " × " + image.h + (match ? "  ·  matches image" : "");
+    cvOverlay.classList.toggle("snapped", !!snapped);
+  }
+  function cvObjs() { return S.objects.map(function (o) { return { o: o, x: o.x || 0, y: o.y || 0 }; }); }
+  function startCvResize(e, h) {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    var z = S.zoom, r0 = stage.getBoundingClientRect(), s0 = cvState(), pan0 = { x: S.panX, y: S.panY }, objs0 = cvObjs();
+    var I = { l: s0.x, t: s0.y, r: s0.x + image.bw, b: s0.y + image.bh }, th = 8 / z;
+    function snapTo(v, cands) { var best = v, d = th, hit = false; cands.forEach(function (c) { if (Math.abs(v - c) < d) { d = Math.abs(v - c); best = c; hit = true; } }); return [best, hit]; }
+    function mv(ev) {
+      var qx = (ev.clientX - r0.left) / z, qy = (ev.clientY - r0.top) / z;
+      var L = 0, T = 0, R = s0.w, B = s0.h, snapped = false, sn;
+      if (h.indexOf("w") > -1) { sn = snapTo(qx, [I.l, 0]); L = Math.min(sn[0], R - 16); snapped = snapped || sn[1]; }
+      if (h.indexOf("e") > -1) { sn = snapTo(qx, [I.r, s0.w]); R = Math.max(sn[0], L + 16); snapped = snapped || sn[1]; }
+      if (h.indexOf("n") > -1) { sn = snapTo(qy, [I.t, 0]); T = Math.min(sn[0], B - 16); snapped = snapped || sn[1]; }
+      if (h.indexOf("s") > -1) { sn = snapTo(qy, [I.b, s0.h]); B = Math.max(sn[0], T + 16); snapped = snapped || sn[1]; }
+      L = Math.round(L); T = Math.round(T); R = Math.round(R); B = Math.round(B);
+      cvApplyLive({ w: R - L, h: B - T, x: s0.x - L, y: s0.y - T, bg: s0.bg }, { x: pan0.x + L * z, y: pan0.y + T * z });
+      objs0.forEach(function (rec) { rec.o.x = rec.x - L; rec.o.y = rec.y - T; updateObjEl(rec.o); });
+      layoutCvOverlay(snapped);
+    }
+    function up() { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); cvCommit(); }
+    document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
+  }
+  function startCvMove(e) {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    var z = S.zoom, sx = e.clientX, sy = e.clientY, s0 = cvState(), objs0 = cvObjs(), th = 8 / z;
+    function mv(ev) {
+      var nx = s0.x + (ev.clientX - sx) / z, ny = s0.y + (ev.clientY - sy) / z, snapped = false;
+      [[nx, 0], [nx + image.bw, s0.w], [nx + image.bw / 2, s0.w / 2]].some(function (p) { if (Math.abs(p[0] - p[1]) < th) { nx += p[1] - p[0]; snapped = true; return true; } });
+      [[ny, 0], [ny + image.bh, s0.h], [ny + image.bh / 2, s0.h / 2]].some(function (p) { if (Math.abs(p[0] - p[1]) < th) { ny += p[1] - p[0]; snapped = true; return true; } });
+      nx = Math.round(nx); ny = Math.round(ny);
+      cvApplyLive({ w: s0.w, h: s0.h, x: nx, y: ny, bg: s0.bg });
+      var dx = nx - s0.x, dy = ny - s0.y;
+      objs0.forEach(function (rec) { rec.o.x = rec.x + dx; rec.o.y = rec.y + dy; updateObjEl(rec.o); });
+      layoutCvOverlay(snapped);
+    }
+    function up() { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); cvCommit(); }
+    document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
+  }
+  function cvCommit() {
+    var c = canvasOf(image), nc = c;
+    if (c && c.w === image.bw && c.h === image.bh && !c.x && !c.y && (!c.bg || c.bg === "transparent")) nc = null;
+    image.canvas = nc; applyCanvas();
+    Store.updateImage(projectId, imageId, { canvas: nc });
+    drawGrid(); renderObjects(); wireObjectEvents(); layoutCvOverlay(); renderProps();
+    cvEnsureVisible();
+    pushHistory(); markDirty();
+  }
+
   // client coords -> image coords
   function toImage(clientX, clientY) {
-    var r = stageImg.getBoundingClientRect();
+    var r = stage.getBoundingClientRect();   // canvas coordinates (the image may sit inside a larger canvas)
     return { x: (clientX - r.left) / S.zoom, y: (clientY - r.top) / S.zoom };
   }
 
@@ -2001,8 +2196,9 @@
       return;
     }
     if (!o) {
-      panel.innerHTML = '<div class="props-empty"><div class="empty-icon">' + Icons.svg("cursor", { size: 26 }) +
-        "</div><p>Select an object to edit its properties, or add one from the library.</p></div>";
+      panel.innerHTML = (image ? canvasPanelHTML() + '<p class="layers-hint" style="margin:4px 16px 16px;font-size:11.5px;line-height:1.45;color:var(--text-3,#7f8ea3)">Select a component to edit its properties.</p>'
+        : '<div class="props-empty"><div class="empty-icon">' + Icons.svg("cursor", { size: 26 }) + "</div><p>Select an object to edit its properties, or add one from the library.</p></div>");
+      wireCanvasPanel(panel);
       return;
     }
     var html = "";
@@ -3434,6 +3630,8 @@
   }
   function enterCropMode() {
     if (!image) { UI.toast({ type: "warning", title: "Upload an image first" }); return; }
+    if (cvMode) exitCanvasMode();
+    if (!canvasMatches()) { UI.toast({ type: "warning", title: "Match the canvas to the image first", desc: "Cropping works on the image itself. Deselect everything and use Match image in Canvas." }); return; }
     if (drawMode) setDrawMode(false);
     deselect();
     cropMode = true; cropAspect = null;
@@ -3597,8 +3795,8 @@
       var newSrc = cnv.toDataURL("image/png");
       // shift every annotation into the new crop origin
       S.objects.forEach(function (o) { o.x = Math.round((o.x || 0) - r.x); o.y = Math.round((o.y || 0) - r.y); });
-      image.w = r.w; image.h = r.h; image.src = newSrc;
-      Store.updateImage(projectId, imageId, { src: newSrc, w: r.w, h: r.h });
+      image.w = r.w; image.h = r.h; image.bw = r.w; image.bh = r.h; image.bx = 0; image.by = 0; image.canvas = null; image.src = newSrc;
+      Store.updateImage(projectId, imageId, { src: newSrc, w: r.w, h: r.h, canvas: null });
       exitCropMode();
       stageImg.onload = function () {
         stageImg.style.width = image.w + "px"; stageImg.style.height = image.h + "px";
@@ -3617,7 +3815,7 @@
   /* ============================================================
      HISTORY (undo / redo)
   ============================================================ */
-  function snapshot() { return JSON.stringify(S.objects); }
+  function snapshot() { return JSON.stringify({ o: S.objects, c: image ? (canvasOf(image) || null) : null }); }
   function pushHistory() {
     history.push(snapshot());
     if (history.length > HIST_LIMIT) history.shift();
@@ -3627,13 +3825,13 @@
   function undo() {
     if (history.length < 2) { if (history.length === 1) { /* revert to empty baseline */ } return; }
     future.push(history.pop());
-    S.objects = JSON.parse(history[history.length - 1]);
+    restoreSnap(history[history.length - 1]);
     S.selected = null; S.selectedIds = []; renderObjects(); wireObjectEvents(); renderProps(); renderLayers(); markDirty(); updateUndoButtons();
   }
   function redo() {
     if (!future.length) return;
     var state = future.pop(); history.push(state);
-    S.objects = JSON.parse(state);
+    restoreSnap(state);
     S.selected = null; S.selectedIds = []; renderObjects(); wireObjectEvents(); renderProps(); renderLayers(); markDirty(); updateUndoButtons();
   }
   function updateUndoButtons() {
@@ -3698,8 +3896,9 @@
     var ctx = canvas.getContext("2d");
     var base = new Image();
     base.onload = function () {
-      if (format === "jpeg") { ctx.fillStyle = "#0B1220"; ctx.fillRect(0, 0, canvas.width, canvas.height); }
-      ctx.drawImage(base, 0, 0, image.w, image.h);
+      var cbg = image.canvasBg && image.canvasBg !== "transparent" ? image.canvasBg : (format === "jpeg" ? "#0B1220" : null);
+      if (cbg) { ctx.fillStyle = cbg; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+      ctx.drawImage(base, image.bx || 0, image.by || 0, image.bw || image.w, image.bh || image.h);
       var ordered = S.objects.slice().sort(function (a, b) { return (a.z || 0) - (b.z || 0); });
       // render objects sequentially (svg objects need async image load)
       var i = 0;
@@ -4332,6 +4531,7 @@
     if (mod && e.key.toLowerCase() === "d") { e.preventDefault(); duplicateSelected(); return; }
     if (mod && e.key.toLowerCase() === "c") { if (S.selected) { e.preventDefault(); copySelected(); } return; }
     if (mod && e.key.toLowerCase() === "v") { if (clipboard || readClipboard()) { e.preventDefault(); pasteClipboard(); } return; }
+    if (cvMode) { if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); exitCanvasMode(); } return; }
     if (cropMode) {
       if (e.key === "Escape") { e.preventDefault(); exitCropMode(); }
       else if (e.key === "Enter") { e.preventDefault(); applyCrop(); }
@@ -4821,6 +5021,7 @@
     $("btnFit").onclick = fitToScreen;
     $("btnCenter").onclick = centerCanvas;
     $("btnCrop").onclick = toggleCropMode;
+    if ($("btnCanvas")) $("btnCanvas").onclick = toggleCanvasMode;
     $("zoomLabel").onclick = setZoom100;
     $("btnGrid").onclick = function () { S.showGrid = !S.showGrid; Store.setSettings({ showGrid: S.showGrid }); $("btnGrid").classList.toggle("is-active", S.showGrid); drawGrid(); };
     $("btnSnap").onclick = function () { S.snap = !S.snap; Store.setSettings({ snapToGrid: S.snap }); $("btnSnap").classList.toggle("is-active", S.snap); UI.toast({ title: "Snap to grid " + (S.snap ? "on" : "off"), duration: 1200 }); };
@@ -4872,8 +5073,7 @@
     document.title = image.filename + " · Horizon Caption Studio";
     stageImg.onload = function () {
       originalImageSrc = originalImageSrc || image.src;
-      stageImg.style.width = image.w + "px"; stageImg.style.height = image.h + "px";
-      stage.style.width = image.w + "px"; stage.style.height = image.h + "px";
+      applyCanvas();
       drawGrid();
       fitToScreen();
       renderObjects(); wireObjectEvents();
@@ -4889,6 +5089,7 @@
     if (!project) { location.href = "dashboard.html"; return; }
     if (!imageId && project.images.length) imageId = project.images[0].id;
     image = imageId ? Store.getImage(projectId, imageId) : null;
+    if (image) { image.bw = image.w; image.bh = image.h; image.bx = 0; image.by = 0; }
     S.objects = image ? JSON.parse(JSON.stringify(image.objects || [])) : [];
     boot();
   });

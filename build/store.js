@@ -81,14 +81,18 @@
       function ms(v) { var t = Date.parse(v); return isNaN(t) ? Date.now() : t; }
       function toDoc(coll, r) {
         if (coll === "projects") return { name: r.name, description: r.description || "", createdAt: ms(r.created_at), updatedAt: ms(r.updated_at) };
-        if (coll === "images") return { projectId: r.project_id, filename: r.filename || "image", w: r.w || 0, h: r.h || 0, objects: r.objects || [],
+        if (coll === "images") {
+          var objs = Array.isArray(r.objects) ? r.objects : [], meta = objs.filter(function (x) { return x && x.type === "__canvas"; })[0];
+          return { projectId: r.project_id, filename: r.filename || "image", w: r.w || 0, h: r.h || 0,
+            objects: objs.filter(function (x) { return !(x && x.type === "__canvas"); }), canvas: meta ? meta.canvas : null,
           assetId: r.storage_path || null, sizeBytes: sizes[r.storage_path] || 0, sortIndex: r.sort_index || 0, createdAt: ms(r.created_at), updatedAt: ms(r.updated_at) };
+        }
         return { name: r.name || "Asset", w: r.w || 0, h: r.h || 0, assetId: r.storage_path || null, sizeBytes: sizes[r.storage_path] || 0, createdAt: ms(r.created_at) };
       }
       function toRow(coll, id, d) {
         if (coll === "projects") return { id: id, name: d.name, description: d.description || "", created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
         if (coll === "images") return { id: id, project_id: d.projectId, filename: d.filename || "image", w: Math.round(d.w || 0), h: Math.round(d.h || 0),
-          objects: d.objects || [], storage_path: d.assetId || null, sort_index: d.sortIndex || 0, created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
+          objects: (d.objects || []).concat(d.canvas ? [{ type: "__canvas", canvas: d.canvas }] : []), storage_path: d.assetId || null, sort_index: d.sortIndex || 0, created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
         return { id: id, name: d.name || "Asset", w: Math.round(d.w || 0), h: Math.round(d.h || 0), storage_path: d.assetId || null, created_at: iso(d.createdAt) };
       }
       function remember(path, blob) { var u = URL.createObjectURL(blob); urls[path] = u; ids[u] = path; sizes[path] = blob.size; return u; }
@@ -472,7 +476,7 @@
     images.forEach(function (im) {
       var cp = byProj[im.projectId]; if (!cp) return;
       if (im.assetId) { ASSET[im.id] = im.assetId; if (im.sizeBytes) SIZE[im.assetId] = im.sizeBytes; }
-      cp.images.push({ id: im.id, filename: im.filename || "image", w: im.w || 0, h: im.h || 0, addedAt: im.createdAt || Date.now(), updatedAt: im.updatedAt || Date.now(), objects: decodeObjects(im.objects || []) });
+      cp.images.push({ id: im.id, filename: im.filename || "image", w: im.w || 0, h: im.h || 0, addedAt: im.createdAt || Date.now(), updatedAt: im.updatedAt || Date.now(), objects: decodeObjects(im.objects || []), canvas: im.canvas || null });
     });
     brand.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     _brand = brand.map(function (a) {
@@ -552,7 +556,8 @@
       var objects = await encodeObjects(im.objects);
       return {
         projectId: projectId, filename: im.filename, w: im.w, h: im.h, objects: objects,
-        assetId: ASSET[imageId] || null, sizeBytes: SIZE[ASSET[imageId]] || 0, sortIndex: i, createdAt: im.addedAt, updatedAt: im.updatedAt
+        assetId: ASSET[imageId] || null, sizeBytes: SIZE[ASSET[imageId]] || 0, sortIndex: i, createdAt: im.addedAt, updatedAt: im.updatedAt,
+        canvas: im.canvas || null
       };
     });
   }
@@ -619,7 +624,7 @@
     var copy = { id: uid("prj"), name: src.name + " copy", description: src.description, thumbnail: null, createdAt: now, updatedAt: now, images: [] };
     src.images.forEach(function (im) {
       var nid = uid("img");
-      copy.images.push({ id: nid, filename: im.filename, w: im.w, h: im.h, addedAt: now, updatedAt: now, objects: clone(im.objects) });
+      copy.images.push({ id: nid, filename: im.filename, w: im.w, h: im.h, addedAt: now, updatedAt: now, objects: clone(im.objects), canvas: im.canvas ? clone(im.canvas) : null });
       copyBytes(im.id, nid);
     });
     _projects.splice(idx + 1, 0, copy);
@@ -678,7 +683,7 @@
     var p = findCache(projectId); if (!p) return null;
     var idx = imgIndex(p, imageId); if (idx < 0) return null;
     var src = p.images[idx], now = Date.now(), nid = uid("img");
-    var copy = { id: nid, filename: (src.filename || "image").replace(/(\.[^.]+)?$/, " copy$1"), w: src.w, h: src.h, addedAt: now, updatedAt: now, objects: clone(src.objects) };
+    var copy = { id: nid, filename: (src.filename || "image").replace(/(\.[^.]+)?$/, " copy$1"), w: src.w, h: src.h, addedAt: now, updatedAt: now, objects: clone(src.objects), canvas: src.canvas ? clone(src.canvas) : null };
     copyBytes(imageId, nid);
     p.images.splice(idx + 1, 0, copy);
     touch(p);
@@ -788,7 +793,7 @@
     var manifest = { format: "skytek-caption-project", formatVersion: 1, exportedAt: new Date().toISOString(), project: { name: p.name, description: p.description || "" }, images: [] };
     for (var i = 0; i < p.images.length; i++) {
       var im = p.images[i];
-      var entry = { filename: im.filename || "image", w: im.w || 0, h: im.h || 0, objects: await inlineBlobs(im.objects || []), type: null, file: null };
+      var entry = { filename: im.filename || "image", w: im.w || 0, h: im.h || 0, objects: await inlineBlobs(im.objects || []), canvas: im.canvas || null, type: null, file: null };
       var data = await toDataUrl(srcOf(im.id)).catch(function () { return null; });
       if (data && data.indexOf(",") > -1) {
         var mime = (/data:([^;]+)/.exec(data) || [])[1] || "image/png";
@@ -823,7 +828,11 @@
             return byteP.then(function (dataUrl) {
               if (!dataUrl) return;
               var rec = addImage(proj.id, { src: dataUrl, w: entry.w, h: entry.h, filename: entry.filename || "image" });
-              if (rec) { newIds.push(rec.id); if (entry.objects && entry.objects.length) saveImageObjects(proj.id, rec.id, entry.objects); }
+              if (rec) {
+                newIds.push(rec.id);
+                if (entry.objects && entry.objects.length) saveImageObjects(proj.id, rec.id, entry.objects);
+                if (entry.canvas) updateImage(proj.id, rec.id, { canvas: entry.canvas });
+              }
             });
           });
         }, Promise.resolve()).then(function () {

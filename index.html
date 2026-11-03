@@ -737,7 +737,8 @@ html.is-navigating::after { content: ""; position: fixed; left: 0; top: 0; heigh
 .poly-preview { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; z-index: 12; }
 
 .stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
-.stage-img { position: absolute; top: 0; left: 0; display: block; user-select: none; -webkit-user-drag: none; box-shadow: 0 10px 50px -10px rgba(0,0,0,.6); }
+.stage-img { position: absolute; top: 0; left: 0; display: block; user-select: none; -webkit-user-drag: none; }
+.stage { box-shadow: 0 10px 50px -10px rgba(0,0,0,.6); }
 .stage-grid { position: absolute; inset: 0; pointer-events: none; display: none; }
 .stage-grid.on { display: block; }
 
@@ -1086,6 +1087,36 @@ html.is-navigating::after { content: ""; position: fixed; left: 0; top: 0; heigh
 .edge-guide.edge-t, .edge-guide.edge-b { left: 0; right: 0; height: calc(2px / var(--z,1)); }
 .edge-guide.edge-l { left: 0; } .edge-guide.edge-r { right: 0; }
 .edge-guide.edge-t { top: 0; } .edge-guide.edge-b { bottom: 0; }
+
+/* Canvas: checkerboard shows transparent areas; anchor picker for the image position */
+.stage.canvas-transparent { background-image: repeating-conic-gradient(rgba(255,255,255,.10) 0% 25%, rgba(255,255,255,.03) 0% 50%);
+  background-size: calc(20px / var(--z,1)) calc(20px / var(--z,1)); }
+.cv-anchor { display: grid; grid-template-columns: repeat(3, 26px); gap: 4px; }
+.cv-cell { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--border); background: var(--panel-2); border-radius: 5px; cursor: pointer; padding: 0; }
+.cv-cell span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3, #7f8ea3); }
+.cv-cell:hover { border-color: var(--accent-400, #33BEF2); }
+.cv-cell.on { background: var(--accent-soft, rgba(0,174,239,.15)); border-color: var(--accent-400, #33BEF2); }
+.cv-cell.on span { width: 10px; height: 10px; border-radius: 2px; background: var(--accent-400, #33BEF2); }
+
+/* Canvas tool */
+#cvOverlay { position: absolute; inset: 0; z-index: 31; }
+.canvas-mode #objLayer { pointer-events: none; opacity: .55; }
+.canvas-mode .stage-grid { opacity: 0; }
+#cvOverlay .cv-frame { position: absolute; inset: 0; pointer-events: none;
+  outline: calc(2px / var(--z,1)) dashed var(--accent-400, #33BEF2); outline-offset: 0; }
+#cvOverlay.snapped .cv-frame, #cvOverlay.snapped .cv-img { outline-color: #FF2D2D; }
+#cvOverlay .cv-img { position: absolute; cursor: move; outline: calc(1.5px / var(--z,1)) solid rgba(255,255,255,.85);
+  box-shadow: 0 0 0 calc(1px / var(--z,1)) rgba(0,0,0,.4); }
+#cvOverlay .cv-img:hover { background: rgba(51,190,242,.08); }
+.cv-h { position: absolute; width: calc(12px / var(--z,1)); height: calc(12px / var(--z,1)); background: #fff; z-index: 2;
+  border: calc(2px / var(--z,1)) solid var(--accent-400, #33BEF2); border-radius: calc(3px / var(--z,1)); transform: translate(-50%, -50%); box-sizing: border-box; }
+.cv-nw { left: 0; top: 0; cursor: nwse-resize; } .cv-n { left: 50%; top: 0; cursor: ns-resize; } .cv-ne { left: 100%; top: 0; cursor: nesw-resize; }
+.cv-e { left: 100%; top: 50%; cursor: ew-resize; } .cv-se { left: 100%; top: 100%; cursor: nwse-resize; } .cv-s { left: 50%; top: 100%; cursor: ns-resize; }
+.cv-sw { left: 0; top: 100%; cursor: nesw-resize; } .cv-w { left: 0; top: 50%; cursor: ew-resize; }
+.cv-size { position: absolute; left: 50%; top: 100%; pointer-events: none; white-space: nowrap;
+  transform: translate(-50%, calc(14px / var(--z,1))) scale(calc(1 / var(--z,1))); transform-origin: 50% 0;
+  background: var(--accent, #00AEEF); color: #fff; font: 600 12px Inter, system-ui, sans-serif; padding: 4px 9px; border-radius: 6px; }
+#cvOverlay.snapped .cv-size { background: #FF2D2D; }
 </style>
 <script async id="lucideLib" src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 <script async src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -1572,7 +1603,7 @@ window.__PAGES["project"] = { title: "Project \u00b7 Horizon Caption Studio", bo
 })();
 
 } };
-window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", bodyClass: "editor-body", sheets: ["app", "editor"], html: "<div class=\"editor\">\n  <!-- TOP TOOLBAR -->\n  <header class=\"etop\">\n    <div class=\"group\">\n      <a class=\"tbtn\" id=\"btnBack\" title=\"Back to project\"><span data-icon=\"chevL\"><\/span><\/a>\n      <div class=\"brand-mark\" style=\"width:30px;height:30px;border-radius:8px\"><span id=\"topLogo\"><\/span><\/div>\n      <div class=\"file-name\"><span class=\"fn\" id=\"fileName\">image.png<\/span><span class=\"fp\" id=\"filePath\">Project<\/span><\/div>\n    <\/div>\n    <div class=\"sep\"><\/div>\n    <div class=\"group\">\n      <button class=\"tbtn\" id=\"btnUndo\" title=\"Undo (Ctrl+Z)\"><span data-icon=\"Undo2\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnRedo\" title=\"Redo (Ctrl+Shift+Z)\"><span data-icon=\"Redo2\"><\/span><\/button>\n      <button class=\"tbtn danger\" id=\"btnResetCanvas\" title=\"Reset \u2014 remove all annotations\"><span data-icon=\"reset\"><\/span><\/button>\n    <\/div>\n    <div class=\"sep\"><\/div>\n    <div class=\"group\">\n      <button class=\"tbtn\" id=\"btnZoomOut\" title=\"Zoom out\"><span data-icon=\"zoomOut\"><\/span><\/button>\n      <span class=\"zoom-label\" id=\"zoomLabel\" title=\"Reset zoom to 100%\">100%<\/span>\n      <button class=\"tbtn\" id=\"btnZoomIn\" title=\"Zoom in\"><span data-icon=\"zoomIn\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnFit\" title=\"Fit to screen\"><span data-icon=\"fit\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnCenter\" title=\"Center image\"><span data-icon=\"target\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnCrop\" title=\"Crop image\"><span data-icon=\"crop\"><\/span><\/button>\n    <\/div>\n    <div class=\"sep\"><\/div>\n    <div class=\"group\">\n      <button class=\"tbtn\" id=\"btnGrid\" title=\"Toggle grid overlay\"><span data-icon=\"gridDots\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnSnap\" title=\"Snap to grid\"><span data-icon=\"layout\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnDraw\" title=\"Draw freehand region (P)\"><span data-icon=\"edit\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnFullscreen\" title=\"Fullscreen (F)\"><span data-icon=\"fullscreen\"><\/span><\/button>\n    <\/div>\n\n    <div class=\"spacer\"><\/div>\n\n    <div class=\"autosave-ind\" id=\"autosaveInd\"><span class=\"dot\"><\/span><span id=\"autosaveText\">Saved<\/span><\/div>\n    <div class=\"sep\"><\/div>\n    <button class=\"btn btn--ghost btn--sm\" id=\"btnSave\"><span data-icon=\"save\"><\/span>Save<\/button>\n    <div class=\"menu-pop\">\n      <button class=\"btn btn--primary btn--sm\" id=\"btnExport\"><span data-icon=\"download\"><\/span>Export<\/button>\n      <div class=\"menu-list\" id=\"exportMenu\">\n        <div class=\"menu-item\" data-export=\"png\"><span data-icon=\"image\"><\/span>Download PNG<\/div>\n        <div class=\"menu-item\" data-export=\"jpeg\"><span data-icon=\"image\"><\/span>Download JPEG<\/div>\n      <\/div>\n    <\/div>\n  <\/header>\n\n  <!-- MAIN -->\n  <div class=\"emain\">\n    <!-- LEFT RAIL -->\n    <aside class=\"erail erail--left\" id=\"leftRail\">\n      <div class=\"rail-resizer rail-resizer--left\" id=\"rightResizer\" title=\"Drag to resize \u00b7 double-click to reset\"><\/div>\n      <section class=\"props-dock\" id=\"propsDock\">\n        <div class=\"erail-head props-head\" style=\"display:flex;align-items:center;gap:8px\">Properties<span style=\"flex:1\"><\/span><button class=\"rail-toggle\" id=\"propsUndock\" title=\"Undock \u2014 move anywhere\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h6v6\"/><path d=\"M20 4l-8 8\"/><path d=\"M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5\"/><\/svg><\/button><button class=\"rail-toggle\" id=\"toggleLayers\" title=\"Hide panel\"><span data-icon=\"x\" data-size=\"15\"><\/span><\/button><\/div>\n        <div class=\"erail-scroll props-scroll\"><div class=\"props\" id=\"propsPanel\"><\/div><\/div>\n      <\/section>\n      <div class=\"hsplit\" id=\"propsSplit\" title=\"Drag to resize \u00b7 double-click to reset\"><\/div>\n      <div class=\"erail-head layers-head\">Layers<span class=\"muted\" id=\"libCount\" style=\"display:none\"><\/span><\/div>\n      <div class=\"erail-scroll layers-scroll\">\n        <div class=\"erail-block\">\n          <div class=\"layer-list\" id=\"layerList\"><\/div>\n        <\/div>\n      <\/div>\n    <\/aside>\n    <button class=\"rail-reopen\" id=\"showLayers\" title=\"Show properties & layers\" style=\"display:none\"><span data-icon=\"layers\" data-size=\"16\"><\/span><\/button>\n\n    <!-- CANVAS + RIBBON -->\n    <div class=\"ecanvas-col\">\n      <div class=\"ecanvas-wrap\" id=\"canvasWrap\">\n        <div class=\"ecanvas-bg\"><\/div>\n        <div class=\"ecanvas-viewport\" id=\"viewport\">\n          <div class=\"stage\" id=\"stage\">\n            <img class=\"stage-img\" id=\"stageImg\" alt=\"\" draggable=\"false\">\n            <canvas class=\"stage-grid\" id=\"stageGrid\"><\/canvas>\n            <div id=\"objLayer\"><\/div>\n          <\/div>\n        <\/div>\n        <div class=\"editor-empty hidden\" id=\"editorEmpty\">\n          <div class=\"empty\">\n            <div class=\"empty-icon\"><span data-icon=\"image\" data-size=\"30\"><\/span><\/div>\n            <h3>No image loaded<\/h3><p>Upload an image to start annotating.<\/p>\n            <button class=\"btn btn--primary\" id=\"btnUploadEmpty\"><span data-icon=\"upload\"><\/span>Upload image<\/button>\n          <\/div>\n        <\/div>\n      <\/div>\n      <!-- IMAGE RIBBON -->\n      <div class=\"img-ribbon\" id=\"imgRibbon\">\n        <div class=\"ribbon-strip\" id=\"ribbonStrip\"><\/div>\n        <button class=\"ribbon-add\" id=\"btnRibbonAdd\" title=\"Add images to this project\"><span data-icon=\"plus\"><\/span>Add<\/button>\n      <\/div>\n    <\/div>\n\n    <!-- RIGHT RAIL -->\n    <aside class=\"erail erail--right\" id=\"rightRail\">\n      <div class=\"rail-resizer\" id=\"leftResizer\" title=\"Drag to resize \u00b7 double-click to reset\"><\/div>\n      <div class=\"erail-head\">Recently used<\/div>\n      <div class=\"recent-body\" id=\"recentPanel\"><\/div>\n      <div class=\"hsplit\" id=\"recentSplit\" title=\"Drag to resize \u00b7 double-click to reset\"><\/div>\n      <div class=\"erail-head\" style=\"border-top:0\">Library<\/div>\n      <div class=\"lib-body\">\n        <div class=\"lib-tabs\" id=\"libTabs\">\n          <button class=\"lib-tab on\" data-tab=\"labels\"><span data-icon=\"tag\" data-size=\"17\"><\/span>Labels<\/button>\n          <button class=\"lib-tab\" data-tab=\"components\"><span data-icon=\"layout\" data-size=\"16\"><\/span>Parts<\/button>          <button class=\"lib-tab\" data-tab=\"icons\"><span data-icon=\"grid\" data-size=\"17\"><\/span>Icons<\/button>\n          <button class=\"lib-tab\" data-tab=\"arrows\"><span data-icon=\"arrowRt\" data-size=\"17\"><\/span>Arrows<\/button>\n          <button class=\"lib-tab\" data-tab=\"shapes\"><span data-icon=\"shapes\" data-size=\"17\"><\/span>Shapes<\/button>\n          <button class=\"lib-tab\" data-tab=\"map\"><span data-icon=\"satellite\" data-size=\"17\"><\/span>Map<\/button>\n          <button class=\"lib-tab\" data-tab=\"watermark\"><span data-icon=\"gridDots\" data-size=\"17\"><\/span>Mark<\/button>\n          <button class=\"lib-tab\" data-tab=\"brand\"><span data-icon=\"image\" data-size=\"17\"><\/span>Brand<\/button>\n        <\/div>\n        <div id=\"libPanel\"><\/div>\n      <\/div>\n\n    <\/aside>\n  <\/div>\n<\/div>\n\n<input type=\"file\" id=\"fileInput\" accept=\"image/jpeg,image/jpg,image/png,image/webp\" multiple class=\"hidden\">\n<input type=\"file\" id=\"replaceInput\" accept=\"image/jpeg,image/jpg,image/png,image/webp\" class=\"hidden\">\n<input type=\"color\" id=\"hiddenColor\" class=\"hidden\">", run: function () {
+window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", bodyClass: "editor-body", sheets: ["app", "editor"], html: "<div class=\"editor\">\n  <!-- TOP TOOLBAR -->\n  <header class=\"etop\">\n    <div class=\"group\">\n      <a class=\"tbtn\" id=\"btnBack\" title=\"Back to project\"><span data-icon=\"chevL\"><\/span><\/a>\n      <div class=\"brand-mark\" style=\"width:30px;height:30px;border-radius:8px\"><span id=\"topLogo\"><\/span><\/div>\n      <div class=\"file-name\"><span class=\"fn\" id=\"fileName\">image.png<\/span><span class=\"fp\" id=\"filePath\">Project<\/span><\/div>\n    <\/div>\n    <div class=\"sep\"><\/div>\n    <div class=\"group\">\n      <button class=\"tbtn\" id=\"btnUndo\" title=\"Undo (Ctrl+Z)\"><span data-icon=\"Undo2\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnRedo\" title=\"Redo (Ctrl+Shift+Z)\"><span data-icon=\"Redo2\"><\/span><\/button>\n      <button class=\"tbtn danger\" id=\"btnResetCanvas\" title=\"Reset \u2014 remove all annotations\"><span data-icon=\"reset\"><\/span><\/button>\n    <\/div>\n    <div class=\"sep\"><\/div>\n    <div class=\"group\">\n      <button class=\"tbtn\" id=\"btnZoomOut\" title=\"Zoom out\"><span data-icon=\"zoomOut\"><\/span><\/button>\n      <span class=\"zoom-label\" id=\"zoomLabel\" title=\"Reset zoom to 100%\">100%<\/span>\n      <button class=\"tbtn\" id=\"btnZoomIn\" title=\"Zoom in\"><span data-icon=\"zoomIn\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnFit\" title=\"Fit to screen\"><span data-icon=\"fit\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnCenter\" title=\"Center image\"><span data-icon=\"target\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnCrop\" title=\"Crop image\"><span data-icon=\"crop\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnCanvas\" title=\"Canvas \u2014 drag edges to resize, drag the image to move it\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"7\" y=\"7\" width=\"10\" height=\"10\" rx=\"1\"/><path d=\"M3 8V4a1 1 0 0 1 1-1h4M16 3h4a1 1 0 0 1 1 1v4M21 16v4a1 1 0 0 1-1 1h-4M8 21H4a1 1 0 0 1-1-1v-4\"/><\/svg><\/button>\n    <\/div>\n    <div class=\"sep\"><\/div>\n    <div class=\"group\">\n      <button class=\"tbtn\" id=\"btnGrid\" title=\"Toggle grid overlay\"><span data-icon=\"gridDots\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnSnap\" title=\"Snap to grid\"><span data-icon=\"layout\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnDraw\" title=\"Draw freehand region (P)\"><span data-icon=\"edit\"><\/span><\/button>\n      <button class=\"tbtn\" id=\"btnFullscreen\" title=\"Fullscreen (F)\"><span data-icon=\"fullscreen\"><\/span><\/button>\n    <\/div>\n\n    <div class=\"spacer\"><\/div>\n\n    <div class=\"autosave-ind\" id=\"autosaveInd\"><span class=\"dot\"><\/span><span id=\"autosaveText\">Saved<\/span><\/div>\n    <div class=\"sep\"><\/div>\n    <button class=\"btn btn--ghost btn--sm\" id=\"btnSave\"><span data-icon=\"save\"><\/span>Save<\/button>\n    <div class=\"menu-pop\">\n      <button class=\"btn btn--primary btn--sm\" id=\"btnExport\"><span data-icon=\"download\"><\/span>Export<\/button>\n      <div class=\"menu-list\" id=\"exportMenu\">\n        <div class=\"menu-item\" data-export=\"png\"><span data-icon=\"image\"><\/span>Download PNG<\/div>\n        <div class=\"menu-item\" data-export=\"jpeg\"><span data-icon=\"image\"><\/span>Download JPEG<\/div>\n      <\/div>\n    <\/div>\n  <\/header>\n\n  <!-- MAIN -->\n  <div class=\"emain\">\n    <!-- LEFT RAIL -->\n    <aside class=\"erail erail--left\" id=\"leftRail\">\n      <div class=\"rail-resizer rail-resizer--left\" id=\"rightResizer\" title=\"Drag to resize \u00b7 double-click to reset\"><\/div>\n      <section class=\"props-dock\" id=\"propsDock\">\n        <div class=\"erail-head props-head\" style=\"display:flex;align-items:center;gap:8px\">Properties<span style=\"flex:1\"><\/span><button class=\"rail-toggle\" id=\"propsUndock\" title=\"Undock \u2014 move anywhere\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 4h6v6\"/><path d=\"M20 4l-8 8\"/><path d=\"M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5\"/><\/svg><\/button><button class=\"rail-toggle\" id=\"toggleLayers\" title=\"Hide panel\"><span data-icon=\"x\" data-size=\"15\"><\/span><\/button><\/div>\n        <div class=\"erail-scroll props-scroll\"><div class=\"props\" id=\"propsPanel\"><\/div><\/div>\n      <\/section>\n      <div class=\"hsplit\" id=\"propsSplit\" title=\"Drag to resize \u00b7 double-click to reset\"><\/div>\n      <div class=\"erail-head layers-head\">Layers<span class=\"muted\" id=\"libCount\" style=\"display:none\"><\/span><\/div>\n      <div class=\"erail-scroll layers-scroll\">\n        <div class=\"erail-block\">\n          <div class=\"layer-list\" id=\"layerList\"><\/div>\n        <\/div>\n      <\/div>\n    <\/aside>\n    <button class=\"rail-reopen\" id=\"showLayers\" title=\"Show properties & layers\" style=\"display:none\"><span data-icon=\"layers\" data-size=\"16\"><\/span><\/button>\n\n    <!-- CANVAS + RIBBON -->\n    <div class=\"ecanvas-col\">\n      <div class=\"ecanvas-wrap\" id=\"canvasWrap\">\n        <div class=\"ecanvas-bg\"><\/div>\n        <div class=\"ecanvas-viewport\" id=\"viewport\">\n          <div class=\"stage\" id=\"stage\">\n            <img class=\"stage-img\" id=\"stageImg\" alt=\"\" draggable=\"false\">\n            <canvas class=\"stage-grid\" id=\"stageGrid\"><\/canvas>\n            <div id=\"objLayer\"><\/div>\n          <\/div>\n        <\/div>\n        <div class=\"editor-empty hidden\" id=\"editorEmpty\">\n          <div class=\"empty\">\n            <div class=\"empty-icon\"><span data-icon=\"image\" data-size=\"30\"><\/span><\/div>\n            <h3>No image loaded<\/h3><p>Upload an image to start annotating.<\/p>\n            <button class=\"btn btn--primary\" id=\"btnUploadEmpty\"><span data-icon=\"upload\"><\/span>Upload image<\/button>\n          <\/div>\n        <\/div>\n      <\/div>\n      <!-- IMAGE RIBBON -->\n      <div class=\"img-ribbon\" id=\"imgRibbon\">\n        <div class=\"ribbon-strip\" id=\"ribbonStrip\"><\/div>\n        <button class=\"ribbon-add\" id=\"btnRibbonAdd\" title=\"Add images to this project\"><span data-icon=\"plus\"><\/span>Add<\/button>\n      <\/div>\n    <\/div>\n\n    <!-- RIGHT RAIL -->\n    <aside class=\"erail erail--right\" id=\"rightRail\">\n      <div class=\"rail-resizer\" id=\"leftResizer\" title=\"Drag to resize \u00b7 double-click to reset\"><\/div>\n      <div class=\"erail-head\">Recently used<\/div>\n      <div class=\"recent-body\" id=\"recentPanel\"><\/div>\n      <div class=\"hsplit\" id=\"recentSplit\" title=\"Drag to resize \u00b7 double-click to reset\"><\/div>\n      <div class=\"erail-head\" style=\"border-top:0\">Library<\/div>\n      <div class=\"lib-body\">\n        <div class=\"lib-tabs\" id=\"libTabs\">\n          <button class=\"lib-tab on\" data-tab=\"labels\"><span data-icon=\"tag\" data-size=\"17\"><\/span>Labels<\/button>\n          <button class=\"lib-tab\" data-tab=\"components\"><span data-icon=\"layout\" data-size=\"16\"><\/span>Parts<\/button>          <button class=\"lib-tab\" data-tab=\"icons\"><span data-icon=\"grid\" data-size=\"17\"><\/span>Icons<\/button>\n          <button class=\"lib-tab\" data-tab=\"arrows\"><span data-icon=\"arrowRt\" data-size=\"17\"><\/span>Arrows<\/button>\n          <button class=\"lib-tab\" data-tab=\"shapes\"><span data-icon=\"shapes\" data-size=\"17\"><\/span>Shapes<\/button>\n          <button class=\"lib-tab\" data-tab=\"map\"><span data-icon=\"satellite\" data-size=\"17\"><\/span>Map<\/button>\n          <button class=\"lib-tab\" data-tab=\"watermark\"><span data-icon=\"gridDots\" data-size=\"17\"><\/span>Mark<\/button>\n          <button class=\"lib-tab\" data-tab=\"brand\"><span data-icon=\"image\" data-size=\"17\"><\/span>Brand<\/button>\n        <\/div>\n        <div id=\"libPanel\"><\/div>\n      <\/div>\n\n    <\/aside>\n  <\/div>\n<\/div>\n\n<input type=\"file\" id=\"fileInput\" accept=\"image/jpeg,image/jpg,image/png,image/webp\" multiple class=\"hidden\">\n<input type=\"file\" id=\"replaceInput\" accept=\"image/jpeg,image/jpg,image/png,image/webp\" class=\"hidden\">\n<input type=\"color\" id=\"hiddenColor\" class=\"hidden\">", run: function () {
 /* ============================================================
    editor.js — Image Caption Studio editor engine
    Handles: image loading, object model (labels/captions/icons/
@@ -1970,12 +2001,14 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
         if (o.media === "upload" && o.image) {
           prims.push({ t: "image", x: 0, y: L.mediaY, w: w, h: L.mediaH, src: o.image, natW: o.imgW || w, natH: o.imgH || L.mediaH });
         } else if (o.media === "zoom" && image && image.src) {
+          // the zoom reads the image's own pixels: convert from canvas coordinates
+          var BX = image.bx || 0, BY = image.by || 0, BW = image.bw || image.w, BH = image.bh || image.h;
           var z = Math.max(1, o.zoom || 4), sw = w / z, sh = L.mediaH / z;
-          var cx = o.zoomX != null ? o.zoomX : image.w / 2, cy = o.zoomY != null ? o.zoomY : image.h / 2;
-          var sx = Math.max(0, Math.min(image.w - sw, cx - sw / 2)), sy = Math.max(0, Math.min(image.h - sh, cy - sh / 2));
+          var cx = (o.zoomX != null ? o.zoomX : image.w / 2) - BX, cy = (o.zoomY != null ? o.zoomY : image.h / 2) - BY;
+          var sx = Math.max(0, Math.min(BW - sw, cx - sw / 2)), sy = Math.max(0, Math.min(BH - sh, cy - sh / 2));
           prims.push({ t: "path", d: pRect(0, L.mediaY, w, L.mediaH, 0), fill: "#000" });
-          prims.push({ t: "image", x: 0, y: L.mediaY, w: w, h: L.mediaH, src: image.src, natW: image.w, natH: image.h,
-                       crop: { sx: sx, sy: sy, sw: Math.min(sw, image.w), sh: Math.min(sh, image.h) } });
+          prims.push({ t: "image", x: 0, y: L.mediaY, w: w, h: L.mediaH, src: image.src, natW: BW, natH: BH,
+                       crop: { sx: sx, sy: sy, sw: Math.min(sw, BW), sh: Math.min(sh, BH) } });
         }
       }
       return prims.concat(L.content);
@@ -2927,9 +2960,202 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
     zoomAt(1 / S.zoom, rect.left + rect.width / 2, rect.top + rect.height / 2);
   }
 
+  /* ---- Canvas: its own size, the image's position on it, and a background ---- */
+  // image.bw/bh = the image's pixels; image.w/h = canvas size (stage, guides, export, fit);
+  // image.bx/by = where the image sits on the canvas.
+  function canvasOf(img) { var c = img && img.canvas; return (c && c.w > 0 && c.h > 0) ? c : null; }
+  function applyCanvas() {
+    if (!image) return;
+    var c = canvasOf(image) || { w: image.bw, h: image.bh, x: 0, y: 0, bg: "transparent" };
+    image.w = Math.round(c.w); image.h = Math.round(c.h);
+    image.bx = Math.round(c.x || 0); image.by = Math.round(c.y || 0);
+    image.canvasBg = c.bg || "transparent";
+    stage.style.width = image.w + "px"; stage.style.height = image.h + "px";
+    stageImg.style.left = image.bx + "px"; stageImg.style.top = image.by + "px";
+    stageImg.style.width = image.bw + "px"; stageImg.style.height = image.bh + "px";
+    stage.classList.toggle("canvas-transparent", image.canvasBg === "transparent");
+    stage.style.backgroundColor = image.canvasBg === "transparent" ? "" : image.canvasBg;
+  }
+  function canvasMatches() { return image && image.w === image.bw && image.h === image.bh && !image.bx && !image.by; }
+  function setCanvas(nc) {
+    var ox = image.bx || 0, oy = image.by || 0;
+    if (nc && nc.w === image.bw && nc.h === image.bh && !nc.x && !nc.y && (!nc.bg || nc.bg === "transparent")) nc = null;  // same as the image
+    image.canvas = nc;
+    applyCanvas();
+    var dx = (image.bx || 0) - ox, dy = (image.by || 0) - oy;   // annotations stay attached to the image
+    if (dx || dy) S.objects.forEach(function (o) { o.x = (o.x || 0) + dx; o.y = (o.y || 0) + dy; });
+    Store.updateImage(projectId, imageId, { canvas: nc });
+    drawGrid(); fitToScreen(); renderObjects(); wireObjectEvents(); renderLayers(); renderProps(); layoutCvOverlay();
+    pushHistory(); markDirty();
+  }
+  function restoreSnap(state) {
+    var st = JSON.parse(state);
+    if (Array.isArray(st)) { S.objects = st; return; }
+    S.objects = st.o || [];
+    if (image && JSON.stringify(canvasOf(image)) !== JSON.stringify(st.c || null)) {
+      image.canvas = st.c || null; applyCanvas(); Store.updateImage(projectId, imageId, { canvas: image.canvas }); drawGrid(); fitToScreen(); layoutCvOverlay();
+    }
+  }
+  function canvasPanelHTML() {
+    if (!image) return "";
+    var c = canvasOf(image) || { w: image.bw, h: image.bh, x: 0, y: 0, ax: 0.5, ay: 0.5, bg: "transparent" };
+    var ax = c.ax !== undefined ? c.ax : 0.5, ay = c.ay !== undefined ? c.ay : 0.5, bg = c.bg || "transparent";
+    var grid = "";
+    [0, 0.5, 1].forEach(function (yy) { [0, 0.5, 1].forEach(function (xx) {
+      grid += '<button class="cv-cell' + (xx === ax && yy === ay ? " on" : "") + '" data-cvanchor="' + xx + "," + yy + '" title="Image position"><span></span></button>';
+    }); });
+    var sw = SWATCHES.map(function (col) {
+      return '<div class="color-sw' + (bg.toLowerCase() === col.toLowerCase() ? " on" : "") + '" data-cvcolor="' + col + '" style="background:' + col + '"></div>';
+    }).join("") + '<label class="color-sw custom" title="Custom colour" style="position:relative;overflow:hidden">' + Icons.svg("plus", { size: 13 }) +
+      '<input type="color" data-cvcustom="1" value="' + (bg !== "transparent" ? bg : "#ffffff") + '" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>';
+    var hint = 'style="margin:2px 0 8px;font-size:11.5px;line-height:1.45;color:var(--text-3,#7f8ea3)"';
+    return '<div class="prop-group"><h4>Canvas</h4>' +
+      '<div class="prop-row"><label>Width</label><div class="ctrl"><input class="input" type="number" data-cv="w" value="' + Math.round(c.w) + '" min="16" max="20000"></div></div>' +
+      '<div class="prop-row"><label>Height</label><div class="ctrl"><input class="input" type="number" data-cv="h" value="' + Math.round(c.h) + '" min="16" max="20000"></div></div>' +
+      '<p class="layers-hint" ' + hint + '>Image: ' + image.bw + " × " + image.bh + " px" + (canvasMatches() ? " · canvas matches the image" : "") + "</p>" +
+      '<div class="prop-row" style="gap:6px"><button class="view-btn' + (cvMode ? " on" : "") + '" data-cvact="tool" style="flex:1">' + Icons.svg(cvMode ? "check" : "edit", { size: 14 }) + (cvMode ? "Done" : "Edit on canvas") + "</button>" +
+      '<button class="view-btn" data-cvact="match" style="flex:1"' + (canvasMatches() ? " disabled" : "") + ">" + Icons.svg("reset", { size: 14 }) + "Match image</button></div>" +
+      '<div class="prop-row" style="align-items:flex-start"><label>Image position</label><div class="ctrl"><div class="cv-anchor">' + grid + "</div></div></div>" +
+      "</div>" +
+      '<div class="prop-group"><h4>Background</h4>' +
+      '<div class="prop-row"><label>Fill</label><div class="ctrl seg2"><button data-cvbg="transparent" class="' + (bg === "transparent" ? "on" : "") + '">Transparent</button>' +
+      '<button data-cvbg="color" class="' + (bg !== "transparent" ? "on" : "") + '">Colour</button></div></div>' +
+      (bg !== "transparent" ? '<div class="prop-row"><div class="ctrl"><div class="color-swatches">' + sw + "</div></div></div>" : "") +
+      "</div>";
+  }
+  function wireCanvasPanel(panel) {
+    if (!image) return;
+    function cur() { var c = canvasOf(image); return c ? JSON.parse(JSON.stringify(c)) : { w: image.bw, h: image.bh, x: 0, y: 0, ax: 0.5, ay: 0.5, bg: "transparent" }; }
+    function place(c) {   // position the image on the canvas from the anchor (a dragged position has none)
+      if (c.ax != null) c.x = Math.round((c.w - image.bw) * c.ax);
+      if (c.ay != null) c.y = Math.round((c.h - image.bh) * c.ay);
+      return c;
+    }
+    panel.querySelectorAll("[data-cv]").forEach(function (inp) {
+      inp.addEventListener("change", function () {
+        var v = Math.round(+inp.value); if (!(v >= 16)) { inp.value = inp.getAttribute("data-cv") === "w" ? image.w : image.h; return; }
+        var c = cur(); c[inp.getAttribute("data-cv")] = Math.min(20000, v); setCanvas(place(c));
+      });
+    });
+    var tl = panel.querySelector('[data-cvact="tool"]'); if (tl) tl.addEventListener("click", toggleCanvasMode);
+    var m = panel.querySelector('[data-cvact="match"]'); if (m) m.addEventListener("click", function () {
+      var c = cur(); setCanvas(c.bg && c.bg !== "transparent" ? { w: image.bw, h: image.bh, x: 0, y: 0, ax: 0.5, ay: 0.5, bg: c.bg } : null);
+    });
+    panel.querySelectorAll("[data-cvanchor]").forEach(function (b) {
+      b.addEventListener("click", function () { var a = b.getAttribute("data-cvanchor").split(","), c = cur(); c.ax = +a[0]; c.ay = +a[1]; setCanvas(place(c)); });
+    });
+    panel.querySelectorAll("[data-cvbg]").forEach(function (b) {
+      b.addEventListener("click", function () { var c = cur(); c.bg = b.getAttribute("data-cvbg") === "transparent" ? "transparent" : (c.bg && c.bg !== "transparent" ? c.bg : "#ffffff"); setCanvas(place(c)); });
+    });
+    panel.querySelectorAll("[data-cvcolor]").forEach(function (s) {
+      s.addEventListener("click", function () { var c = cur(); c.bg = s.getAttribute("data-cvcolor"); setCanvas(place(c)); });
+    });
+    var cc = panel.querySelector("[data-cvcustom]"); if (cc) cc.addEventListener("change", function () { var c = cur(); c.bg = cc.value; setCanvas(place(c)); });
+  }
+
+  /* ---- Canvas tool: drag handles to resize the canvas, drag the image to move it ---- */
+  var cvMode = false, cvOverlay = null;
+  function enterCanvasMode() {
+    if (!image) { UI.toast({ type: "warning", title: "Upload an image first" }); return; }
+    if (typeof cropMode !== "undefined" && cropMode) exitCropMode();
+    if (drawMode) setDrawMode(false);
+    deselect(); cvMode = true;
+    canvasWrap.classList.add("canvas-mode"); var b = $("btnCanvas"); if (b) b.classList.add("is-active");
+    buildCvOverlay(); cvEnsureVisible(); renderProps();
+    UI.toast({ type: "info", title: "Canvas", desc: "Drag the edges to resize · drag the image to move it · Esc when done.", duration: 3200 });
+  }
+  function exitCanvasMode() {
+    cvMode = false;
+    if (cvOverlay) { cvOverlay.remove(); cvOverlay = null; }
+    canvasWrap.classList.remove("canvas-mode"); var b = $("btnCanvas"); if (b) b.classList.remove("is-active");
+    renderProps();
+  }
+  // keep every handle reachable: re-fit the view if the canvas runs outside the visible area
+  function cvEnsureVisible() {
+    var r = stage.getBoundingClientRect(), v = canvasWrap.getBoundingClientRect(), m = 24;
+    if (r.left < v.left + m || r.top < v.top + m || r.right > v.right - m || r.bottom > v.bottom - m) fitToScreen();
+  }
+  function toggleCanvasMode() { if (cvMode) exitCanvasMode(); else enterCanvasMode(); }
+  function cvState() { var c = canvasOf(image); return { w: image.w, h: image.h, x: image.bx || 0, y: image.by || 0, bg: (c && c.bg) || "transparent" }; }
+  function anchorOf(off, cw, iw) {
+    var free = cw - iw; if (Math.abs(free) < 1) return 0.5;
+    var r = off / free, hit = null; [0, 0.5, 1].forEach(function (v) { if (Math.abs(r - v) < 0.002) hit = v; }); return hit;
+  }
+  function cvApplyLive(c, pan) {
+    image.canvas = { w: c.w, h: c.h, x: c.x, y: c.y, ax: anchorOf(c.x, c.w, image.bw), ay: anchorOf(c.y, c.h, image.bh), bg: c.bg };
+    applyCanvas();
+    if (pan) { S.panX = pan.x; S.panY = pan.y; applyTransform(); }
+  }
+  function buildCvOverlay() {
+    cvOverlay = document.createElement("div"); cvOverlay.id = "cvOverlay";
+    cvOverlay.innerHTML = '<div class="cv-frame"></div><div class="cv-img" title="Drag to move the image"></div>' +
+      ["nw", "n", "ne", "e", "se", "s", "sw", "w"].map(function (h) { return '<div class="cv-h cv-' + h + '" data-cvh="' + h + '" title="Drag to resize the canvas"></div>'; }).join("") +
+      '<div class="cv-size"></div>';
+    stage.appendChild(cvOverlay);
+    cvOverlay.querySelectorAll("[data-cvh]").forEach(function (h) { h.addEventListener("pointerdown", function (e) { startCvResize(e, h.getAttribute("data-cvh")); }); });
+    cvOverlay.querySelector(".cv-img").addEventListener("pointerdown", startCvMove);
+    layoutCvOverlay();
+  }
+  function layoutCvOverlay(snapped) {
+    if (!cvOverlay || !image) return;
+    var im = cvOverlay.querySelector(".cv-img");
+    im.style.left = image.bx + "px"; im.style.top = image.by + "px"; im.style.width = image.bw + "px"; im.style.height = image.bh + "px";
+    var match = image.w === image.bw && image.h === image.bh;
+    cvOverlay.querySelector(".cv-size").textContent = image.w + " × " + image.h + (match ? "  ·  matches image" : "");
+    cvOverlay.classList.toggle("snapped", !!snapped);
+  }
+  function cvObjs() { return S.objects.map(function (o) { return { o: o, x: o.x || 0, y: o.y || 0 }; }); }
+  function startCvResize(e, h) {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    var z = S.zoom, r0 = stage.getBoundingClientRect(), s0 = cvState(), pan0 = { x: S.panX, y: S.panY }, objs0 = cvObjs();
+    var I = { l: s0.x, t: s0.y, r: s0.x + image.bw, b: s0.y + image.bh }, th = 8 / z;
+    function snapTo(v, cands) { var best = v, d = th, hit = false; cands.forEach(function (c) { if (Math.abs(v - c) < d) { d = Math.abs(v - c); best = c; hit = true; } }); return [best, hit]; }
+    function mv(ev) {
+      var qx = (ev.clientX - r0.left) / z, qy = (ev.clientY - r0.top) / z;
+      var L = 0, T = 0, R = s0.w, B = s0.h, snapped = false, sn;
+      if (h.indexOf("w") > -1) { sn = snapTo(qx, [I.l, 0]); L = Math.min(sn[0], R - 16); snapped = snapped || sn[1]; }
+      if (h.indexOf("e") > -1) { sn = snapTo(qx, [I.r, s0.w]); R = Math.max(sn[0], L + 16); snapped = snapped || sn[1]; }
+      if (h.indexOf("n") > -1) { sn = snapTo(qy, [I.t, 0]); T = Math.min(sn[0], B - 16); snapped = snapped || sn[1]; }
+      if (h.indexOf("s") > -1) { sn = snapTo(qy, [I.b, s0.h]); B = Math.max(sn[0], T + 16); snapped = snapped || sn[1]; }
+      L = Math.round(L); T = Math.round(T); R = Math.round(R); B = Math.round(B);
+      cvApplyLive({ w: R - L, h: B - T, x: s0.x - L, y: s0.y - T, bg: s0.bg }, { x: pan0.x + L * z, y: pan0.y + T * z });
+      objs0.forEach(function (rec) { rec.o.x = rec.x - L; rec.o.y = rec.y - T; updateObjEl(rec.o); });
+      layoutCvOverlay(snapped);
+    }
+    function up() { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); cvCommit(); }
+    document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
+  }
+  function startCvMove(e) {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    var z = S.zoom, sx = e.clientX, sy = e.clientY, s0 = cvState(), objs0 = cvObjs(), th = 8 / z;
+    function mv(ev) {
+      var nx = s0.x + (ev.clientX - sx) / z, ny = s0.y + (ev.clientY - sy) / z, snapped = false;
+      [[nx, 0], [nx + image.bw, s0.w], [nx + image.bw / 2, s0.w / 2]].some(function (p) { if (Math.abs(p[0] - p[1]) < th) { nx += p[1] - p[0]; snapped = true; return true; } });
+      [[ny, 0], [ny + image.bh, s0.h], [ny + image.bh / 2, s0.h / 2]].some(function (p) { if (Math.abs(p[0] - p[1]) < th) { ny += p[1] - p[0]; snapped = true; return true; } });
+      nx = Math.round(nx); ny = Math.round(ny);
+      cvApplyLive({ w: s0.w, h: s0.h, x: nx, y: ny, bg: s0.bg });
+      var dx = nx - s0.x, dy = ny - s0.y;
+      objs0.forEach(function (rec) { rec.o.x = rec.x + dx; rec.o.y = rec.y + dy; updateObjEl(rec.o); });
+      layoutCvOverlay(snapped);
+    }
+    function up() { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); cvCommit(); }
+    document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
+  }
+  function cvCommit() {
+    var c = canvasOf(image), nc = c;
+    if (c && c.w === image.bw && c.h === image.bh && !c.x && !c.y && (!c.bg || c.bg === "transparent")) nc = null;
+    image.canvas = nc; applyCanvas();
+    Store.updateImage(projectId, imageId, { canvas: nc });
+    drawGrid(); renderObjects(); wireObjectEvents(); layoutCvOverlay(); renderProps();
+    cvEnsureVisible();
+    pushHistory(); markDirty();
+  }
+
   // client coords -> image coords
   function toImage(clientX, clientY) {
-    var r = stageImg.getBoundingClientRect();
+    var r = stage.getBoundingClientRect();   // canvas coordinates (the image may sit inside a larger canvas)
     return { x: (clientX - r.left) / S.zoom, y: (clientY - r.top) / S.zoom };
   }
 
@@ -3576,8 +3802,9 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
       return;
     }
     if (!o) {
-      panel.innerHTML = '<div class="props-empty"><div class="empty-icon">' + Icons.svg("cursor", { size: 26 }) +
-        "</div><p>Select an object to edit its properties, or add one from the library.</p></div>";
+      panel.innerHTML = (image ? canvasPanelHTML() + '<p class="layers-hint" style="margin:4px 16px 16px;font-size:11.5px;line-height:1.45;color:var(--text-3,#7f8ea3)">Select a component to edit its properties.</p>'
+        : '<div class="props-empty"><div class="empty-icon">' + Icons.svg("cursor", { size: 26 }) + "</div><p>Select an object to edit its properties, or add one from the library.</p></div>");
+      wireCanvasPanel(panel);
       return;
     }
     var html = "";
@@ -5009,6 +5236,8 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
   }
   function enterCropMode() {
     if (!image) { UI.toast({ type: "warning", title: "Upload an image first" }); return; }
+    if (cvMode) exitCanvasMode();
+    if (!canvasMatches()) { UI.toast({ type: "warning", title: "Match the canvas to the image first", desc: "Cropping works on the image itself. Deselect everything and use Match image in Canvas." }); return; }
     if (drawMode) setDrawMode(false);
     deselect();
     cropMode = true; cropAspect = null;
@@ -5172,8 +5401,8 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
       var newSrc = cnv.toDataURL("image/png");
       // shift every annotation into the new crop origin
       S.objects.forEach(function (o) { o.x = Math.round((o.x || 0) - r.x); o.y = Math.round((o.y || 0) - r.y); });
-      image.w = r.w; image.h = r.h; image.src = newSrc;
-      Store.updateImage(projectId, imageId, { src: newSrc, w: r.w, h: r.h });
+      image.w = r.w; image.h = r.h; image.bw = r.w; image.bh = r.h; image.bx = 0; image.by = 0; image.canvas = null; image.src = newSrc;
+      Store.updateImage(projectId, imageId, { src: newSrc, w: r.w, h: r.h, canvas: null });
       exitCropMode();
       stageImg.onload = function () {
         stageImg.style.width = image.w + "px"; stageImg.style.height = image.h + "px";
@@ -5192,7 +5421,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
   /* ============================================================
      HISTORY (undo / redo)
   ============================================================ */
-  function snapshot() { return JSON.stringify(S.objects); }
+  function snapshot() { return JSON.stringify({ o: S.objects, c: image ? (canvasOf(image) || null) : null }); }
   function pushHistory() {
     history.push(snapshot());
     if (history.length > HIST_LIMIT) history.shift();
@@ -5202,13 +5431,13 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
   function undo() {
     if (history.length < 2) { if (history.length === 1) { /* revert to empty baseline */ } return; }
     future.push(history.pop());
-    S.objects = JSON.parse(history[history.length - 1]);
+    restoreSnap(history[history.length - 1]);
     S.selected = null; S.selectedIds = []; renderObjects(); wireObjectEvents(); renderProps(); renderLayers(); markDirty(); updateUndoButtons();
   }
   function redo() {
     if (!future.length) return;
     var state = future.pop(); history.push(state);
-    S.objects = JSON.parse(state);
+    restoreSnap(state);
     S.selected = null; S.selectedIds = []; renderObjects(); wireObjectEvents(); renderProps(); renderLayers(); markDirty(); updateUndoButtons();
   }
   function updateUndoButtons() {
@@ -5273,8 +5502,9 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
     var ctx = canvas.getContext("2d");
     var base = new Image();
     base.onload = function () {
-      if (format === "jpeg") { ctx.fillStyle = "#0B1220"; ctx.fillRect(0, 0, canvas.width, canvas.height); }
-      ctx.drawImage(base, 0, 0, image.w, image.h);
+      var cbg = image.canvasBg && image.canvasBg !== "transparent" ? image.canvasBg : (format === "jpeg" ? "#0B1220" : null);
+      if (cbg) { ctx.fillStyle = cbg; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+      ctx.drawImage(base, image.bx || 0, image.by || 0, image.bw || image.w, image.bh || image.h);
       var ordered = S.objects.slice().sort(function (a, b) { return (a.z || 0) - (b.z || 0); });
       // render objects sequentially (svg objects need async image load)
       var i = 0;
@@ -5907,6 +6137,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
     if (mod && e.key.toLowerCase() === "d") { e.preventDefault(); duplicateSelected(); return; }
     if (mod && e.key.toLowerCase() === "c") { if (S.selected) { e.preventDefault(); copySelected(); } return; }
     if (mod && e.key.toLowerCase() === "v") { if (clipboard || readClipboard()) { e.preventDefault(); pasteClipboard(); } return; }
+    if (cvMode) { if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); exitCanvasMode(); } return; }
     if (cropMode) {
       if (e.key === "Escape") { e.preventDefault(); exitCropMode(); }
       else if (e.key === "Enter") { e.preventDefault(); applyCrop(); }
@@ -6396,6 +6627,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
     $("btnFit").onclick = fitToScreen;
     $("btnCenter").onclick = centerCanvas;
     $("btnCrop").onclick = toggleCropMode;
+    if ($("btnCanvas")) $("btnCanvas").onclick = toggleCanvasMode;
     $("zoomLabel").onclick = setZoom100;
     $("btnGrid").onclick = function () { S.showGrid = !S.showGrid; Store.setSettings({ showGrid: S.showGrid }); $("btnGrid").classList.toggle("is-active", S.showGrid); drawGrid(); };
     $("btnSnap").onclick = function () { S.snap = !S.snap; Store.setSettings({ snapToGrid: S.snap }); $("btnSnap").classList.toggle("is-active", S.snap); UI.toast({ title: "Snap to grid " + (S.snap ? "on" : "off"), duration: 1200 }); };
@@ -6447,8 +6679,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
     document.title = image.filename + " · Horizon Caption Studio";
     stageImg.onload = function () {
       originalImageSrc = originalImageSrc || image.src;
-      stageImg.style.width = image.w + "px"; stageImg.style.height = image.h + "px";
-      stage.style.width = image.w + "px"; stage.style.height = image.h + "px";
+      applyCanvas();
       drawGrid();
       fitToScreen();
       renderObjects(); wireObjectEvents();
@@ -6464,6 +6695,7 @@ window.__PAGES["editor"] = { title: "Editor \u00b7 Horizon Caption Studio", body
     if (!project) { App.href = "dashboard.html"; return; }
     if (!imageId && project.images.length) imageId = project.images[0].id;
     image = imageId ? Store.getImage(projectId, imageId) : null;
+    if (image) { image.bw = image.w; image.bh = image.h; image.bx = 0; image.by = 0; }
     S.objects = image ? JSON.parse(JSON.stringify(image.objects || [])) : [];
     boot();
   });
@@ -7090,14 +7322,18 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
       function ms(v) { var t = Date.parse(v); return isNaN(t) ? Date.now() : t; }
       function toDoc(coll, r) {
         if (coll === "projects") return { name: r.name, description: r.description || "", createdAt: ms(r.created_at), updatedAt: ms(r.updated_at) };
-        if (coll === "images") return { projectId: r.project_id, filename: r.filename || "image", w: r.w || 0, h: r.h || 0, objects: r.objects || [],
+        if (coll === "images") {
+          var objs = Array.isArray(r.objects) ? r.objects : [], meta = objs.filter(function (x) { return x && x.type === "__canvas"; })[0];
+          return { projectId: r.project_id, filename: r.filename || "image", w: r.w || 0, h: r.h || 0,
+            objects: objs.filter(function (x) { return !(x && x.type === "__canvas"); }), canvas: meta ? meta.canvas : null,
           assetId: r.storage_path || null, sizeBytes: sizes[r.storage_path] || 0, sortIndex: r.sort_index || 0, createdAt: ms(r.created_at), updatedAt: ms(r.updated_at) };
+        }
         return { name: r.name || "Asset", w: r.w || 0, h: r.h || 0, assetId: r.storage_path || null, sizeBytes: sizes[r.storage_path] || 0, createdAt: ms(r.created_at) };
       }
       function toRow(coll, id, d) {
         if (coll === "projects") return { id: id, name: d.name, description: d.description || "", created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
         if (coll === "images") return { id: id, project_id: d.projectId, filename: d.filename || "image", w: Math.round(d.w || 0), h: Math.round(d.h || 0),
-          objects: d.objects || [], storage_path: d.assetId || null, sort_index: d.sortIndex || 0, created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
+          objects: (d.objects || []).concat(d.canvas ? [{ type: "__canvas", canvas: d.canvas }] : []), storage_path: d.assetId || null, sort_index: d.sortIndex || 0, created_at: iso(d.createdAt), updated_at: iso(d.updatedAt) };
         return { id: id, name: d.name || "Asset", w: Math.round(d.w || 0), h: Math.round(d.h || 0), storage_path: d.assetId || null, created_at: iso(d.createdAt) };
       }
       function remember(path, blob) { var u = URL.createObjectURL(blob); urls[path] = u; ids[u] = path; sizes[path] = blob.size; return u; }
@@ -7481,7 +7717,7 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
     images.forEach(function (im) {
       var cp = byProj[im.projectId]; if (!cp) return;
       if (im.assetId) { ASSET[im.id] = im.assetId; if (im.sizeBytes) SIZE[im.assetId] = im.sizeBytes; }
-      cp.images.push({ id: im.id, filename: im.filename || "image", w: im.w || 0, h: im.h || 0, addedAt: im.createdAt || Date.now(), updatedAt: im.updatedAt || Date.now(), objects: decodeObjects(im.objects || []) });
+      cp.images.push({ id: im.id, filename: im.filename || "image", w: im.w || 0, h: im.h || 0, addedAt: im.createdAt || Date.now(), updatedAt: im.updatedAt || Date.now(), objects: decodeObjects(im.objects || []), canvas: im.canvas || null });
     });
     brand.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     _brand = brand.map(function (a) {
@@ -7561,7 +7797,8 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
       var objects = await encodeObjects(im.objects);
       return {
         projectId: projectId, filename: im.filename, w: im.w, h: im.h, objects: objects,
-        assetId: ASSET[imageId] || null, sizeBytes: SIZE[ASSET[imageId]] || 0, sortIndex: i, createdAt: im.addedAt, updatedAt: im.updatedAt
+        assetId: ASSET[imageId] || null, sizeBytes: SIZE[ASSET[imageId]] || 0, sortIndex: i, createdAt: im.addedAt, updatedAt: im.updatedAt,
+        canvas: im.canvas || null
       };
     });
   }
@@ -7628,7 +7865,7 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
     var copy = { id: uid("prj"), name: src.name + " copy", description: src.description, thumbnail: null, createdAt: now, updatedAt: now, images: [] };
     src.images.forEach(function (im) {
       var nid = uid("img");
-      copy.images.push({ id: nid, filename: im.filename, w: im.w, h: im.h, addedAt: now, updatedAt: now, objects: clone(im.objects) });
+      copy.images.push({ id: nid, filename: im.filename, w: im.w, h: im.h, addedAt: now, updatedAt: now, objects: clone(im.objects), canvas: im.canvas ? clone(im.canvas) : null });
       copyBytes(im.id, nid);
     });
     _projects.splice(idx + 1, 0, copy);
@@ -7687,7 +7924,7 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
     var p = findCache(projectId); if (!p) return null;
     var idx = imgIndex(p, imageId); if (idx < 0) return null;
     var src = p.images[idx], now = Date.now(), nid = uid("img");
-    var copy = { id: nid, filename: (src.filename || "image").replace(/(\.[^.]+)?$/, " copy$1"), w: src.w, h: src.h, addedAt: now, updatedAt: now, objects: clone(src.objects) };
+    var copy = { id: nid, filename: (src.filename || "image").replace(/(\.[^.]+)?$/, " copy$1"), w: src.w, h: src.h, addedAt: now, updatedAt: now, objects: clone(src.objects), canvas: src.canvas ? clone(src.canvas) : null };
     copyBytes(imageId, nid);
     p.images.splice(idx + 1, 0, copy);
     touch(p);
@@ -7797,7 +8034,7 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
     var manifest = { format: "skytek-caption-project", formatVersion: 1, exportedAt: new Date().toISOString(), project: { name: p.name, description: p.description || "" }, images: [] };
     for (var i = 0; i < p.images.length; i++) {
       var im = p.images[i];
-      var entry = { filename: im.filename || "image", w: im.w || 0, h: im.h || 0, objects: await inlineBlobs(im.objects || []), type: null, file: null };
+      var entry = { filename: im.filename || "image", w: im.w || 0, h: im.h || 0, objects: await inlineBlobs(im.objects || []), canvas: im.canvas || null, type: null, file: null };
       var data = await toDataUrl(srcOf(im.id)).catch(function () { return null; });
       if (data && data.indexOf(",") > -1) {
         var mime = (/data:([^;]+)/.exec(data) || [])[1] || "image/png";
@@ -7832,7 +8069,11 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
             return byteP.then(function (dataUrl) {
               if (!dataUrl) return;
               var rec = addImage(proj.id, { src: dataUrl, w: entry.w, h: entry.h, filename: entry.filename || "image" });
-              if (rec) { newIds.push(rec.id); if (entry.objects && entry.objects.length) saveImageObjects(proj.id, rec.id, entry.objects); }
+              if (rec) {
+                newIds.push(rec.id);
+                if (entry.objects && entry.objects.length) saveImageObjects(proj.id, rec.id, entry.objects);
+                if (entry.canvas) updateImage(proj.id, rec.id, { canvas: entry.canvas });
+              }
             });
           });
         }, Promise.resolve()).then(function () {
@@ -7990,10 +8231,34 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
   /* ---- downloads ---- */
   var downloadsP = null;
   function getDownloads() { return downloadsP || (downloadsP = (typeof claude !== "undefined" && claude.use) ? claude.use("downloads") : Promise.resolve(null)); }
+  // Turn a download link back into its file WITHOUT a network request: published pages
+  // refuse fetch() of data: and blob: URLs, which silently broke every export.
+  var BLOBS = new Map(), origCreateURL = URL.createObjectURL.bind(URL);
+  URL.createObjectURL = function (obj) {
+    var u = origCreateURL(obj);
+    try { if (obj instanceof Blob) { BLOBS.set(u, obj); if (BLOBS.size > 200) BLOBS.delete(BLOBS.keys().next().value); } } catch (e) {}
+    return u;
+  };
+  function dataUrlBlob(href) {
+    var comma = href.indexOf(","), meta = href.slice(5, comma), body = href.slice(comma + 1);
+    var mime = meta.split(";")[0] || "application/octet-stream", isB64 = /;base64/i.test(meta);
+    if (!isB64) return new Blob([decodeURIComponent(body)], { type: mime });
+    var bin = atob(body), len = bin.length, arr = new Uint8Array(len);
+    for (var i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+  function hrefToBlob(href) {
+    try {
+      if (/^data:/i.test(href)) return Promise.resolve(dataUrlBlob(href));
+      if (BLOBS.has(href)) return Promise.resolve(BLOBS.get(href));
+    } catch (e) { return Promise.reject(e); }
+    return fetch(href).then(function (r) { return r.blob(); });
+  }
   function saveFile(href, filename) {
     filename = filename || "download";
     if (/\.skproj$/i.test(filename)) filename += ".zip";
-    Promise.all([getDownloads(), fetch(href).then(function (r) { return r.blob(); })]).then(function (res) {
+    var blobP = hrefToBlob(href);   // resolved right away, before the page can revoke the link
+    Promise.all([getDownloads(), blobP]).then(function (res) {
       var dl = res[0], blob = res[1];
       if (!dl) {
         if (window.Store && Store.isLocal && Store.isLocal()) {   // plain web page: ordinary browser download
@@ -8008,7 +8273,10 @@ window.__PAGES["settings"] = { title: "Settings \u00b7 Horizon Caption Studio", 
         if (e && e.code === "declined") return;
         if (window.UI) UI.toast({ type: "danger", title: "Download failed", desc: (e && e.message) || "" });
       });
-    }).catch(function (e) { console.error(e); });
+    }).catch(function (e) {
+      console.error(e);
+      if (window.UI) UI.toast({ type: "danger", title: "Download failed", desc: (e && e.message) || "The file couldn’t be prepared." });
+    });
   }
   var origClick = HTMLAnchorElement.prototype.click;
   HTMLAnchorElement.prototype.click = function () {

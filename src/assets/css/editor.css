@@ -135,7 +135,8 @@
 .poly-preview { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; z-index: 12; }
 
 .stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
-.stage-img { position: absolute; top: 0; left: 0; display: block; user-select: none; -webkit-user-drag: none; box-shadow: 0 10px 50px -10px rgba(0,0,0,.6); }
+.stage-img { position: absolute; top: 0; left: 0; display: block; user-select: none; -webkit-user-drag: none; }
+.stage { box-shadow: 0 10px 50px -10px rgba(0,0,0,.6); }
 .stage-grid { position: absolute; inset: 0; pointer-events: none; display: none; }
 .stage-grid.on { display: block; }
 
@@ -484,3 +485,33 @@
 .edge-guide.edge-t, .edge-guide.edge-b { left: 0; right: 0; height: calc(2px / var(--z,1)); }
 .edge-guide.edge-l { left: 0; } .edge-guide.edge-r { right: 0; }
 .edge-guide.edge-t { top: 0; } .edge-guide.edge-b { bottom: 0; }
+
+/* Canvas: checkerboard shows transparent areas; anchor picker for the image position */
+.stage.canvas-transparent { background-image: repeating-conic-gradient(rgba(255,255,255,.10) 0% 25%, rgba(255,255,255,.03) 0% 50%);
+  background-size: calc(20px / var(--z,1)) calc(20px / var(--z,1)); }
+.cv-anchor { display: grid; grid-template-columns: repeat(3, 26px); gap: 4px; }
+.cv-cell { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--border); background: var(--panel-2); border-radius: 5px; cursor: pointer; padding: 0; }
+.cv-cell span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3, #7f8ea3); }
+.cv-cell:hover { border-color: var(--accent-400, #33BEF2); }
+.cv-cell.on { background: var(--accent-soft, rgba(0,174,239,.15)); border-color: var(--accent-400, #33BEF2); }
+.cv-cell.on span { width: 10px; height: 10px; border-radius: 2px; background: var(--accent-400, #33BEF2); }
+
+/* Canvas tool */
+#cvOverlay { position: absolute; inset: 0; z-index: 31; }
+.canvas-mode #objLayer { pointer-events: none; opacity: .55; }
+.canvas-mode .stage-grid { opacity: 0; }
+#cvOverlay .cv-frame { position: absolute; inset: 0; pointer-events: none;
+  outline: calc(2px / var(--z,1)) dashed var(--accent-400, #33BEF2); outline-offset: 0; }
+#cvOverlay.snapped .cv-frame, #cvOverlay.snapped .cv-img { outline-color: #FF2D2D; }
+#cvOverlay .cv-img { position: absolute; cursor: move; outline: calc(1.5px / var(--z,1)) solid rgba(255,255,255,.85);
+  box-shadow: 0 0 0 calc(1px / var(--z,1)) rgba(0,0,0,.4); }
+#cvOverlay .cv-img:hover { background: rgba(51,190,242,.08); }
+.cv-h { position: absolute; width: calc(12px / var(--z,1)); height: calc(12px / var(--z,1)); background: #fff; z-index: 2;
+  border: calc(2px / var(--z,1)) solid var(--accent-400, #33BEF2); border-radius: calc(3px / var(--z,1)); transform: translate(-50%, -50%); box-sizing: border-box; }
+.cv-nw { left: 0; top: 0; cursor: nwse-resize; } .cv-n { left: 50%; top: 0; cursor: ns-resize; } .cv-ne { left: 100%; top: 0; cursor: nesw-resize; }
+.cv-e { left: 100%; top: 50%; cursor: ew-resize; } .cv-se { left: 100%; top: 100%; cursor: nwse-resize; } .cv-s { left: 50%; top: 100%; cursor: ns-resize; }
+.cv-sw { left: 0; top: 100%; cursor: nesw-resize; } .cv-w { left: 0; top: 50%; cursor: ew-resize; }
+.cv-size { position: absolute; left: 50%; top: 100%; pointer-events: none; white-space: nowrap;
+  transform: translate(-50%, calc(14px / var(--z,1))) scale(calc(1 / var(--z,1))); transform-origin: 50% 0;
+  background: var(--accent, #00AEEF); color: #fff; font: 600 12px Inter, system-ui, sans-serif; padding: 4px 9px; border-radius: 6px; }
+#cvOverlay.snapped .cv-size { background: #FF2D2D; }

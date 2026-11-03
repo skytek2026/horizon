@@ -107,10 +107,34 @@
   /* ---- downloads ---- */
   var downloadsP = null;
   function getDownloads() { return downloadsP || (downloadsP = (typeof claude !== "undefined" && claude.use) ? claude.use("downloads") : Promise.resolve(null)); }
+  // Turn a download link back into its file WITHOUT a network request: published pages
+  // refuse fetch() of data: and blob: URLs, which silently broke every export.
+  var BLOBS = new Map(), origCreateURL = URL.createObjectURL.bind(URL);
+  URL.createObjectURL = function (obj) {
+    var u = origCreateURL(obj);
+    try { if (obj instanceof Blob) { BLOBS.set(u, obj); if (BLOBS.size > 200) BLOBS.delete(BLOBS.keys().next().value); } } catch (e) {}
+    return u;
+  };
+  function dataUrlBlob(href) {
+    var comma = href.indexOf(","), meta = href.slice(5, comma), body = href.slice(comma + 1);
+    var mime = meta.split(";")[0] || "application/octet-stream", isB64 = /;base64/i.test(meta);
+    if (!isB64) return new Blob([decodeURIComponent(body)], { type: mime });
+    var bin = atob(body), len = bin.length, arr = new Uint8Array(len);
+    for (var i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+  function hrefToBlob(href) {
+    try {
+      if (/^data:/i.test(href)) return Promise.resolve(dataUrlBlob(href));
+      if (BLOBS.has(href)) return Promise.resolve(BLOBS.get(href));
+    } catch (e) { return Promise.reject(e); }
+    return fetch(href).then(function (r) { return r.blob(); });
+  }
   function saveFile(href, filename) {
     filename = filename || "download";
     if (/\.skproj$/i.test(filename)) filename += ".zip";
-    Promise.all([getDownloads(), fetch(href).then(function (r) { return r.blob(); })]).then(function (res) {
+    var blobP = hrefToBlob(href);   // resolved right away, before the page can revoke the link
+    Promise.all([getDownloads(), blobP]).then(function (res) {
       var dl = res[0], blob = res[1];
       if (!dl) {
         if (window.Store && Store.isLocal && Store.isLocal()) {   // plain web page: ordinary browser download
@@ -125,7 +149,10 @@
         if (e && e.code === "declined") return;
         if (window.UI) UI.toast({ type: "danger", title: "Download failed", desc: (e && e.message) || "" });
       });
-    }).catch(function (e) { console.error(e); });
+    }).catch(function (e) {
+      console.error(e);
+      if (window.UI) UI.toast({ type: "danger", title: "Download failed", desc: (e && e.message) || "The file couldn’t be prepared." });
+    });
   }
   var origClick = HTMLAnchorElement.prototype.click;
   HTMLAnchorElement.prototype.click = function () {
