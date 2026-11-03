@@ -2073,6 +2073,13 @@
       var mx = tx - fx * head / 2, my = ty - fy * head / 2;
       return '<polygon points="' + tx + ',' + ty + ' ' + (mx + px * hw) + ',' + (my + py * hw) + ' ' + bx + ',' + by + ' ' + (mx - px * hw) + ',' + (my - py * hw) + '" fill="' + c + '"/>';
     }
+    if (type === "stealth") {   // swept-back barbed head
+      var nx = tx - fx * head * 0.6, ny = ty - fy * head * 0.6;
+      return '<polygon points="' + tx + ',' + ty + ' ' + (bx + px * hw) + ',' + (by + py * hw) + ' ' + nx + ',' + ny + ' ' + (bx - px * hw) + ',' + (by - py * hw) + '" fill="' + c + '" stroke-linejoin="round"/>';
+    }
+    if (type === "bar") {       // flat T-end across the line
+      return '<line x1="' + (tx + px * hw) + '" y1="' + (ty + py * hw) + '" x2="' + (tx - px * hw) + '" y2="' + (ty - py * hw) + '" stroke="' + c + '" stroke-width="' + (sw * 1.25) + '" stroke-linecap="round"/>';
+    }
     // triangle (default)
     return '<polygon points="' + tx + ',' + ty + ' ' + (bx + px * hw) + ',' + (by + py * hw) + ' ' + (bx - px * hw) + ',' + (by - py * hw) + '" fill="' + c + '" stroke-linejoin="round"/>';
   }
@@ -2080,6 +2087,7 @@
   function headRetract(type, head) {
     if (type === "triangle") return head * 0.8;
     if (type === "diamond") return head * 0.95;
+    if (type === "stealth") return head * 0.55;
     if (type === "circle" || type === "ring") return head * 0.5;
     return 0; // open / none
   }
@@ -2102,24 +2110,23 @@
     function line(x1, y1, x2, y2) {
       return '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="' + c + '" stroke-width="' + sw + '" stroke-linecap="round"' + aDash + '/>';
     }
-    if (o.shapeKind === "arrow") {
-      var e = ends(R, cy, 0);
-      s += line(L, cy, e.lx, e.ly);
-      s += arrowHead(ht, e.tx, e.ty, 0, c, sw, head);
-    } else if (o.shapeKind === "darrow") {
-      var er = ends(R, cy, 0), el = ends(L, cy, Math.PI);
-      s += line(el.lx, el.ly, er.lx, er.ly);
+    var both = !!o.bothEnds || o.shapeKind === "darrow";   // Double Arrow = Arrow with both ends
+    if (o.shapeKind === "arrow" || o.shapeKind === "darrow") {
+      var er = ends(R, cy, 0), el = both ? ends(L, cy, Math.PI) : null;
+      s += line(el ? el.lx : L, el ? el.ly : cy, er.lx, er.ly);
       s += arrowHead(ht, er.tx, er.ty, 0, c, sw, head);
-      s += arrowHead(ht, el.tx, el.ty, Math.PI, c, sw, head);
+      if (el) s += arrowHead(ht, el.tx, el.ty, Math.PI, c, sw, head);
     } else if (o.shapeKind === "leader") {
       var ang = Math.atan2(sw - (h - sw), R - L);
-      var le = ends(R, sw, ang);
-      s += line(L, h - sw, le.lx, le.ly);
-      s += '<circle cx="' + L + '" cy="' + (h - sw) + '" r="' + (sw + 2) + '" fill="' + c + '"/>';
+      var le = ends(R, sw, ang), ls = both ? ends(L, h - sw, ang + Math.PI) : null;
+      s += line(ls ? ls.lx : L, ls ? ls.ly : h - sw, le.lx, le.ly);
+      if (ls) s += arrowHead(ht, ls.tx, ls.ty, ang + Math.PI, c, sw, head);
+      else s += '<circle cx="' + L + '" cy="' + (h - sw) + '" r="' + (sw + 2) + '" fill="' + c + '"/>';
       s += arrowHead(ht, le.tx, le.ty, ang, c, sw, head);
     } else if (o.shapeKind === "elbow") {
-      var ee = ends(R, cy, 0);
-      s += '<polyline points="' + L + ',' + (h - sw) + ' ' + L + ',' + cy + ' ' + ee.lx + ',' + cy + '" fill="none" stroke="' + c + '" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round"' + aDash + '/>';
+      var ee = ends(R, cy, 0), es = both ? ends(L, h - sw, Math.PI / 2) : null;
+      if (es) s += arrowHead(ht, es.tx, es.ty, Math.PI / 2, c, sw, head);
+      s += '<polyline points="' + (es ? es.lx : L) + ',' + (es ? es.ly : h - sw) + ' ' + L + ',' + cy + ' ' + ee.lx + ',' + cy + '" fill="none" stroke="' + c + '" stroke-width="' + sw + '" stroke-linecap="round" stroke-linejoin="round"' + aDash + '/>';
       s += arrowHead(ht, ee.tx, ee.ty, 0, c, sw, head);
     }
     return s + "</svg>";
@@ -2484,6 +2491,14 @@
     UI.hydrateIcons(panel);
     wirePropEvents(panel, o);
     if (Kit.has(o.type)) Kit.wire(panel, o);
+    panel.querySelectorAll("[data-arrowhead]").forEach(function (b) { b.addEventListener("click", function () {
+      var ob = getSel(); if (!ob) return; ob.arrowHead = b.getAttribute("data-arrowhead"); renderObjects(); wireObjectEvents(); renderProps(); pushHistory(); markDirty();
+    }); });
+    panel.querySelectorAll("[data-bothends]").forEach(function (b) { b.addEventListener("click", function () {
+      var ob = getSel(); if (!ob) return; var on = b.getAttribute("data-bothends") === "1";
+      ob.bothEnds = on; if (ob.shapeKind === "darrow") ob.shapeKind = "arrow";   // legacy Double Arrow becomes Arrow + setting
+      renderObjects(); wireObjectEvents(); renderProps(); pushHistory(); markDirty();
+    }); });
     if ((o.type === "label" && o.iconSide) || (o.type === "footer" && o.showIcon)) renderLabelIconPicker(o);
   }
 
@@ -2533,12 +2548,19 @@
         return '<button data-strokestyle="' + s[0] + '" class="' + (v === s[0] ? "on" : "") + '">' + s[1] + "</button>";
       }).join("") + "</div></div>";
   }
-  var ARROW_HEADS = [{ id: "triangle", name: "Triangle" }, { id: "open", name: "Open / Chevron" }, { id: "diamond", name: "Diamond" }, { id: "circle", name: "Dot" }, { id: "ring", name: "Circle" }, { id: "none", name: "None (line)" }];
+  var ARROW_HEADS = [{ id: "triangle", name: "Triangle" }, { id: "open", name: "Open" }, { id: "stealth", name: "Barbed" }, { id: "diamond", name: "Diamond" }, { id: "circle", name: "Dot" }, { id: "ring", name: "Circle" }, { id: "bar", name: "Bar" }, { id: "none", name: "None" }];
   function arrowHeadRow(o) {
     var head = o.arrowHead || "triangle";
-    return '<div class="prop-row"><label>Head</label><div class="ctrl"><select class="select" data-prop="arrowHead">' +
-      ARROW_HEADS.map(function (h) { return '<option value="' + h.id + '"' + (head === h.id ? " selected" : "") + ">" + h.name + "</option>"; }).join("") +
-      "</select></div></div>" +
+    var both = !!o.bothEnds || o.shapeKind === "darrow";
+    var picker = ARROW_HEADS.map(function (h) {
+      var ic = '<svg width="30" height="16" viewBox="0 0 30 16" style="overflow:visible">' +
+        (h.id === "none" ? '<line x1="3" y1="8" x2="27" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+          : '<line x1="3" y1="8" x2="' + (26 - headRetract(h.id, 9)) + '" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' + arrowHead(h.id, 26, 8, 0, "currentColor", 2, 9)) + "</svg>";
+      return '<button class="ah-btn' + (head === h.id ? " on" : "") + '" data-arrowhead="' + h.id + '" title="' + h.name + '" aria-label="' + h.name + '">' + ic + "</button>";
+    }).join("");
+    return '<div class="prop-row" style="align-items:flex-start"><label>Head</label><div class="ctrl"><div class="ah-grid">' + picker + "</div></div></div>" +
+      '<div class="prop-row"><label>Ends</label><div class="ctrl seg2">' +
+        '<button data-bothends="0" class="' + (!both ? "on" : "") + '">One</button><button data-bothends="1" class="' + (both ? "on" : "") + '">Both</button></div></div>' +
       (head === "none" ? "" : sliderRow("Head size", "headScale", Math.round(o.headScale || 100), 40, 300, "%"));
   }
   function colorRow(prop, val) {

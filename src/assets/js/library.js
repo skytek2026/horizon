@@ -171,7 +171,7 @@
 
   // Arrows / leader lines
   var ARROWS = [
-    {name:"Arrow", shape:"arrow"}, {name:"Double Arrow", shape:"darrow"},
+    {name:"Arrow", shape:"arrow"},
     {name:"Leader Line", shape:"leader"}, {name:"Elbow Leader", shape:"elbow"}
   ];
 
