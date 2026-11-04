@@ -182,3 +182,12 @@
   .setting-control { justify-content: flex-start; }
   .setting-control .input, .setting-control .select { width: 100%; }
 }
+
+/* Drag to reorder images (project view) */
+.gallery-grid.reorderable .img-card { cursor: grab; touch-action: pan-y; }
+.gallery-grid.reorderable .img-card button, .gallery-grid.reorderable .img-card .ic-name { cursor: pointer; }
+.img-card.reorder-src { opacity: .35; }
+.reorder-ghost { position: fixed !important; z-index: 9999; pointer-events: none; margin: 0 !important; opacity: .92; cursor: grabbing;
+  transform: rotate(-1.5deg) scale(1.02); box-shadow: 0 22px 50px rgba(0,0,0,.45); outline: 2px solid var(--accent-400, #33BEF2); }
+.reorder-marker { position: fixed; z-index: 9998; width: 4px; border-radius: 3px; background: var(--accent-400, #33BEF2); pointer-events: none;
+  box-shadow: 0 0 10px rgba(51,190,242,.8); display: none; }

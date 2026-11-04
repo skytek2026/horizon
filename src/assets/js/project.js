@@ -74,7 +74,7 @@
       var id = card.getAttribute("data-id");
       function open() { location.href = "editor.html?project=" + projectId + "&image=" + id; }
       card.querySelector('[data-act="open"]').addEventListener("click", function (e) { e.stopPropagation(); open(); });
-      card.querySelector(".ic-thumb").addEventListener("click", open);
+      card.querySelector(".ic-thumb").addEventListener("click", function () { if (!galleryJustDragged) open(); });
       function rename(e) { e.stopPropagation(); UI.renameImage(projectId, id, function () { refresh(); renderGallery(); renderHero(); }); }
       card.querySelector('[data-act="ren"]').addEventListener("click", rename);
       var nm = card.querySelector(".ic-name"); nm.title = "Double-click to rename"; nm.addEventListener("dblclick", rename);
@@ -91,6 +91,79 @@
       });
     });
     UI.hydrateIcons(grid);
+    wireGalleryReorder();
+  }
+
+  /* ---- drag to reorder (pointer events: mouse, pen and touch) ---- */
+  var galleryJustDragged = false;
+  function scrollParent(el) {
+    for (var n = el.parentElement; n; n = n.parentElement) {
+      var oy = getComputedStyle(n).overflowY;
+      if ((oy === "auto" || oy === "scroll") && n.scrollHeight > n.clientHeight) return n;
+    }
+    return document.scrollingElement || document.documentElement;
+  }
+  function wireGalleryReorder() {
+    var cards = Array.prototype.slice.call(grid.querySelectorAll(".img-card"));
+    var filtered = !!query;
+    grid.classList.toggle("reorderable", !filtered && cards.length > 1);
+    if (filtered || cards.length < 2) return;
+    cards.forEach(function (card) {
+      card.querySelectorAll("img").forEach(function (im) { im.setAttribute("draggable", "false"); });
+      card.addEventListener("dragstart", function (e) { e.preventDefault(); });
+      card.addEventListener("pointerdown", function (e) {
+        if (e.button !== 0 || e.target.closest("button, input, [data-act]")) return;
+        var sx = e.clientX, sy = e.clientY, dragging = false, ghost = null, marker = null, drop = null, timer = null;
+        var id = card.getAttribute("data-id"), r0 = card.getBoundingClientRect(), gx = sx - r0.left, gy = sy - r0.top;
+        var scroller = scrollParent(grid);
+        function begin() {
+          dragging = true; card.classList.add("reorder-src"); document.body.style.userSelect = "none";
+          ghost = card.cloneNode(true); ghost.classList.add("reorder-ghost"); ghost.style.width = r0.width + "px"; ghost.style.height = r0.height + "px";
+          document.body.appendChild(ghost);
+          marker = document.createElement("div"); marker.className = "reorder-marker"; document.body.appendChild(marker);
+        }
+        function locate(x, y) {
+          var best = null;
+          cards.forEach(function (n) {
+            if (n === card) return;
+            var r = n.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+            var d = Math.hypot(x - cx, (y - cy) * 1.6);   // prefer the same row
+            if (!best || d < best.d) best = { d: d, el: n, after: x > cx, r: r };
+          });
+          return best;
+        }
+        function edge(y) {
+          clearInterval(timer);
+          var v = y < 70 ? -14 : (y > window.innerHeight - 70 ? 14 : 0);
+          if (v) timer = setInterval(function () { scroller.scrollTop += v; }, 16);
+        }
+        function mv(ev) {
+          if (!dragging) { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return; begin(); }
+          ghost.style.left = (ev.clientX - gx) + "px"; ghost.style.top = (ev.clientY - gy) + "px";
+          drop = locate(ev.clientX, ev.clientY);
+          if (drop) {
+            marker.style.display = "block";
+            marker.style.left = ((drop.after ? drop.r.right + 7 : drop.r.left - 11)) + "px";
+            marker.style.top = (drop.r.top + 6) + "px"; marker.style.height = (drop.r.height - 12) + "px";
+          }
+          edge(ev.clientY);
+        }
+        function up() {
+          document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); document.removeEventListener("pointercancel", up);
+          clearInterval(timer);
+          if (!dragging) return;
+          card.classList.remove("reorder-src"); document.body.style.userSelect = "";
+          if (ghost) ghost.remove(); if (marker) marker.remove();
+          galleryJustDragged = true; setTimeout(function () { galleryJustDragged = false; }, 0);
+          if (!drop) return;
+          var order = project.images.map(function (im) { return im.id; }).filter(function (x) { return x !== id; });
+          var ti = order.indexOf(drop.el.getAttribute("data-id")); if (ti < 0) return;
+          order.splice(drop.after ? ti + 1 : ti, 0, id);
+          Store.reorderImages(projectId, order); refresh(); renderGallery(); renderHero();
+        }
+        document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
+      });
+    });
   }
 
   /* ---- upload (button + tile + drag/drop) ---- */

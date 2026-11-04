@@ -2892,13 +2892,15 @@
   // Clipboard persists to localStorage so an object copied on one image can be
   // pasted onto another (navigating between images reloads the page).
   var CLIP_KEY = "skytek.clipboard";
+  var pasteKey = null;
   function readClipboard() {
     try { return JSON.parse(localStorage.getItem(CLIP_KEY) || "null"); } catch (e) { return null; }
   }
   // Copy the selected object(s) to the (persistent) clipboard as an array.
   function copySelected() {
     var objs = selectedObjects(); if (!objs.length) return;
-    clipboard = JSON.parse(JSON.stringify(objs));
+    // remember where the copy came from, so pasting onto another image keeps the same position
+    clipboard = { v: 2, from: imageId, bx: image ? (image.bx || 0) : 0, by: image ? (image.by || 0) : 0, items: JSON.parse(JSON.stringify(objs)) };
     try { localStorage.setItem(CLIP_KEY, JSON.stringify(clipboard)); } catch (e) {}
     pasteShift = 0;
     UI.toast({ type: "info", title: objs.length > 1 ? "Copied " + objs.length + " objects" : "Copied", duration: 1200 });
@@ -2908,15 +2910,22 @@
     if (!image) return;
     var src = clipboard || readClipboard();
     if (!src) return;
-    var arr = Array.isArray(src) ? src : [src];
+    var meta = (src && !Array.isArray(src) && src.v === 2) ? src : null;
+    var arr = meta ? (meta.items || []) : (Array.isArray(src) ? src : [src]);
     if (!arr.length) return;
+    // Another image: first paste lands exactly where it was (relative to the image); repeats cascade.
+    // Same image: every paste cascades so copies don't stack invisibly.
+    var otherImage = !!(meta && meta.from && meta.from !== imageId);
+    var key = (meta && meta.from) + ">" + imageId;
+    if (pasteKey !== key) { pasteKey = key; pasteShift = otherImage ? -22 : 0; }
     pasteShift += 22;
+    var rx = meta ? (image.bx || 0) - (meta.bx || 0) : 0, ry = meta ? (image.by || 0) - (meta.by || 0) : 0;
     // shared offset derived from the group's top-left, clamped on-canvas
-    var minX = Math.min.apply(null, arr.map(function (o) { return o.x || 0; }));
-    var minY = Math.min.apply(null, arr.map(function (o) { return o.y || 0; }));
+    var minX = Math.min.apply(null, arr.map(function (o) { return (o.x || 0) + rx; }));
+    var minY = Math.min.apply(null, arr.map(function (o) { return (o.y || 0) + ry; }));
     var bx = Math.max(0, Math.min(minX, Math.max(0, image.w - 40)));
     var by = Math.max(0, Math.min(minY, Math.max(0, image.h - 40)));
-    var odx = bx - minX + pasteShift, ody = by - minY + pasteShift;
+    var odx = bx - minX + rx + pasteShift, ody = by - minY + ry + pasteShift;
     var regroup = arr.length > 1 || arr.some(function (o) { return o.groupId; });
     var gid = regroup ? ("g_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)) : null;
     var newIds = [];
