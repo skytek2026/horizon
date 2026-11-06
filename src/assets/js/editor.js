@@ -78,7 +78,7 @@
     };
     if (kind === "label") {
       o.type = "label"; o.text = opts.text || "Label";
-      o.font = "Exo"; o.fontSize = 14; o.h = Math.round(o.fontSize * 2.2);
+      o.font = "Exo"; o.fontSize = 24; o.h = Math.round(o.fontSize * 2.2);
       o.captionStyle = "solid";
       if (opts.iconSide) { o.iconSide = opts.iconSide; o.iconKey = opts.iconKey || "Star"; }
       var iconExtra = o.iconSide ? Math.round(o.fontSize * 1.5) : 0;
@@ -106,7 +106,7 @@
       // A caption pre-filled with the current date, styled like a technical timestamp.
       o.type = "caption"; o.text = opts.text || formatStamp(); o.isStamp = true;
       o.font = "JetBrains Mono"; o.fontWeight = 700;
-      o.fontSize = 14;
+      o.fontSize = 20;
       o.color = "#ffffff"; o.bg = "#0B1220"; o.bgOpacity = 0.85; o.borderWidth = 0;
       o.captionStyle = "rounded"; o.shadow = true; o.align = "center";
       o.iconSide = "left"; o.iconKey = "clock";
@@ -122,11 +122,11 @@
       o.bg = "#0B1220"; o.bgOpacity = 0.85;        // background colour + opacity
       o.borderColor = "#00AEEF"; o.borderOpacity = 1; o.borderWidth = 0;
       o.radius = 0; o.font = "Inter";
-      o.titleSize = 24; o.subSize = 14;
+      o.titleSize = 32; o.subSize = 24;
       o.titleFont = "Exo"; o.subtitleFont = "Inter";
       var iw = image ? image.w : 800;
       o.w = clamp(Math.round(iw * 0.6), 280, iw);
-      o.h = clamp(Math.round(iw * 0.12), 64, 200);
+      o.h = clamp(Math.round(iw * 0.12), 100, 220);
     } else if (kind === "arrow") {
       o.type = "arrow"; o.shapeKind = opts.shapeKind; o.text = "";
       o.bg = "transparent"; o.color = "#FFFFFF"; o.borderColor = "#FFFFFF"; o.borderWidth = 2;
@@ -182,7 +182,7 @@
       o.title = "Title"; o.subtitle = "Subtitle"; o.body = "Body text goes here.";
       o.titleShow = true; o.subtitleShow = true; o.bodyShow = true;
       o.titleColor = "#ffffff"; o.subtitleColor = "#9fb3c8"; o.bodyColor = "#e5e7eb";
-      o.titleSize = 24; o.subtitleSize = 16; o.bodySize = 14;
+      o.titleSize = 32; o.subtitleSize = 24; o.bodySize = 20;
       o.titleWeight = 700; o.subtitleWeight = 600; o.bodyWeight = 400;
       o.titleItalic = false; o.subtitleItalic = false; o.bodyItalic = false;
       o.titleFont = "Exo"; o.subtitleFont = "Inter"; o.bodyFont = "Inter";
@@ -202,8 +202,8 @@
       o.layout = "inline";        // "inline" | "stacked"
       o.showValue = true;         // show the "(value)" suffix
       o.dotShape = "circle";      // "circle" | "square"
-      o.dotSize = Math.round(fs * 0.85);
-      o.labelColor = "#ffffff"; o.labelSize = 16; o.labelWeight = 400;
+      o.dotSize = 16;
+      o.labelColor = "#ffffff"; o.labelSize = 20; o.labelWeight = 400;
       o.font = "Exo";
       o.bg = "#000000"; o.bgOpacity = 0.7;
       o.borderColor = "#ffffff"; o.borderOpacity = 1; o.borderWidth = 2;
@@ -655,7 +655,7 @@
       return d.getUTCDate() + " " + m + " " + d.getUTCFullYear() + " · " + p(d.getUTCHours()) + ":" + p(d.getUTCMinutes()) + " UTC";
     }
     function stampLayout(o) {
-      var f = o.f, pad = Math.round(f * 1.1), gap = Math.round(f * 1.1), kS = Math.round(f * 0.8), vS = Math.round(f * 1.5), ls = f * 0.22;
+      var f = o.f, pad = Math.round(f * 1.1), gap = Math.round(f * 1.1), kS = Math.max(11, Math.round(f * 0.8)), vS = Math.round(f * 1.5), ls = f * 0.22;
       var kw = o.kicker ? textW(o.kicker, 600, kS, "Inter", ls) : 0, vw = textW(o.value || " ", 600, vS, "Inter");
       var h = Math.round(f * 3.3), w = Math.round(pad * 2 + vw + (o.kicker ? kw + gap * 2 + 1 : 0));
       var prims = [{ t: "path", d: pRect(0, 0, w, h, Math.round(f * 0.5)), fill: o.bg || NAVY, fillOp: o.bgOpacity == null ? 0.92 : o.bgOpacity,
@@ -894,12 +894,12 @@
       var parts = String(spec || "").split(":"), kind = parts[0], variant = parts[1];
       o.text = ""; o.bg = NAVY; o.borderWidth = 0;
       if (kind === "callout") {
-        var c = CALLOUTS[variant] || CALLOUTS.alert, f = unit(0.0072, 12);
+        var c = CALLOUTS[variant] || CALLOUTS.alert, f = 20;   // card text size 20 by default
         o.type = "callout"; o.variant = variant || "alert"; o.f = f;
         o.accent = c.accent; o.leaderColor = c.accent; o.headerColor = "#ffffff"; o.headerDot = true;
         o.header = c.header; o.headerRight = c.headerRight; o.title = c.title;
         o.rows = c.rows.map(function (r) { return { k: r.k, v: r.v }; }); o.body = c.body;
-        o.media = c.media; o.zoom = 4; o.imgRatio = 0.62; o.image = null;
+        o.media = c.media; o.zoom = 4; o.imgRatio = 0.62; o.image = null; o.headerSize = 20;
         o.leaderShow = true; o.leaderAngle = c.leaderAngle; o.leaderLen = Math.round(f * c.leaderLen); o.leaderEnd = c.leaderEnd;
         o.bgOpacity = 0.94; o.radius = Math.round(f * 0.6);
         o.w = Math.round(f * c.wf);
@@ -909,48 +909,48 @@
         o.accent = r.accent; o.ringStyle = r.ringStyle; o.halo = r.halo; o.ringFill = 0.08;
         o.w = d; o.h = d;
       } else if (kind === "scalebar") {
-        var fs = unit(0.0068, 11);
+        var fs = 18;   // scale labels 16
         o.type = "scalebar"; o.f = fs; o.maxValue = 2; o.unit = "km"; o.divisions = 2;
         o.showNorth = true; o.northRot = 0; o.color = "#ffffff"; o.panel = true; o.bgOpacity = 0.88;
         o.w = Math.round(fs * 20);
       } else if (kind === "track") {
-        var ft = unit(0.0075, 12);
+        var ft = 18;   // pin numbers 18, time chips 16
         o.type = "track"; o.f = ft; o.accent = "#E5323E"; o.lineW = Math.max(2, Math.round(ft * 0.2));
         o.points = opts.points || [{ x: 0, y: 1 }, { x: 0.3, y: 0.62 }, { x: 0.62, y: 0.3 }, { x: 1, y: 0 }];
         o.chevrons = true; o.numbers = true; o.showTimes = true; o.pinStart = false;
         o.times = trackPins(o).map(function (_, i) { return SAMPLE_TIMES[i] || ""; });
         if (!opts.points) { o.w = Math.round(iw() * 0.25); o.h = Math.round(iw() * 0.18); }
       } else if (kind === "shiptag") {
-        var f1 = unit(0.0075, 12);
+        var f1 = 19;   // name 24, details 16
         o.type = "shiptag"; o.f = f1; o.label = "VESSEL NAME"; o.detail = ""; o.align = "center"; o.accent = variant === "noais" ? "#F59E0B" : "#22C55E"; o.leaderColor = o.accent; o.variant = variant || "match";
         o.leaderShow = true; o.leaderAngle = 15; o.leaderLen = Math.round(f1 * 5); o.leaderEnd = "ring"; o.bgOpacity = 0.92;
       } else if (kind === "distance") {
-        var f2 = unit(0.0075, 12);
+        var f2 = 17;   // pill text 20
         o.type = "distance"; o.f = f2; o.label = "00 km"; o.color = "#ffffff"; o.ends = "none"; o.w = Math.round(iw() * 0.22);
       } else if (kind === "aoi") {
-        var f3 = unit(0.0068, 11);
+        var f3 = 18;   // tab label 15
         o.type = "aoi"; o.f = f3; o.label = "AREA OF INTEREST"; o.color = "#ffffff"; o.dashed = true; o.fill = 0;
         o.w = Math.round(iw() * 0.16); o.h = Math.round(iw() * 0.12);
       } else if (kind === "poipin") {
-        var f4 = unit(0.0075, 12);
+        var f4 = 19;   // name 24, detail 16
         o.type = "poipin"; o.f = f4; o.align = "center"; o.accent = "#2F9BFF"; o.title = "Port of Sulina"; o.subtitle = "45°09′25″ N  029°40′20″ E"; o.card = true; o.bgOpacity = 0.92;
       } else if (kind === "zonelabel") {
-        var f5 = unit(0.0075, 12);
+        var f5 = 18;   // name 24, kicker 14
         o.type = "zonelabel"; o.f = f5; o.align = "center"; o.kicker = "LISTED AREA"; o.name = "Zone name"; o.badge = "JWLA-000"; o.accent = "#2F80ED"; o.kickerColor = "#9CD8FF"; o.bgOpacity = 0.92;
       } else if (kind === "placelabel") {
-        var f6 = unit(0.0085, 12);
+        var f6 = 17;   // name 41, second line 19
         o.type = "placelabel"; o.f = f6; o.name = "SULINA"; o.sub = "ROMANIA"; o.color = "#ffffff"; o.outline = NAVY; o.align = "center";
       } else if (kind === "stamp2") {
-        var f7 = unit(0.0075, 12);
+        var f7 = 13;   // date/time 20 (like the Date Stamp)
         o.type = "stamp2"; o.f = f7; o.kicker = "OPTICAL ACQUISITION"; o.value = utcStamp(); o.bgOpacity = 0.92;
       } else if (kind === "maplegend") {
-        var f8 = unit(0.0075, 12);
+        var f8 = 20;   // item labels 20
         o.type = "maplegend"; o.f = f8; o.title = "LEGEND"; o.bgOpacity = 0.9;
         o.items = [{ sym: "ring", color: "#22C55E", label: "AIS and imagery match" }, { sym: "ring", color: "#F59E0B", label: "Detection with no AIS" },
                    { sym: "ringdot", color: "#E5323E", label: "Point of interest" }, { sym: "line", color: "#E5323E", label: "AIS track" },
                    { sym: "dashbox", color: "#ffffff", label: "Area of interest" }];
       } else if (kind === "footer") {
-        var f9 = unit(0.0095, 12);
+        var f9 = 18;   // title 32, subtitle 26 (like the Title Bar)
         o.type = "footer"; o.f = f9; o.title = "VESSEL NAME"; o.subtitle = "Imagery type detection · Black Sea"; o.accent = "#E5323E";
         o.bgOpacity = 0.96; o.logo = null; o.w = iw(); o.h = Math.round(f9 * 3.6);
       }
@@ -3953,8 +3953,99 @@
   /* ============================================================
      EXPORT (render to canvas)
   ============================================================ */
+
+  /* ---- Layered PSD export ---- */
+  var AGPSD_URL = "https://cdn.jsdelivr.net/npm/ag-psd@31.0.3/dist/bundle.js";
+  function loadAgPsd(cb) {
+    if (window.agPsd && window.agPsd.writePsd) return cb(null);
+    var el = document.createElement("script"); el.src = AGPSD_URL; el.async = true;
+    el.onload = function () { cb(window.agPsd && window.agPsd.writePsd ? null : new Error("PSD library didn’t load")); };
+    el.onerror = function () { cb(new Error("Couldn’t load the PSD library. Check your connection and try again.")); };
+    document.head.appendChild(el);
+  }
+  function layerName(o) {
+    return Kit.has(o.type) ? Kit.label(o) : o.type === "titlebar" ? (o.title || "Title bar") : (o.type === "textbox" ? (o.title || o.subtitle || rtPlainText(o.body) || "Text box") :
+      (o.type === "legend" ? "Legend" : (o.type === "photo" ? "Image" : (o.text || (o.type.charAt(0).toUpperCase() + o.type.slice(1)) + (o.shapeKind ? " · " + o.shapeKind : "")))));
+  }
+  // Copy the non-transparent part of a full-size canvas into a tight layer canvas.
+  function cropLayer(src) {
+    var w = src.width, h = src.height, data = src.getContext("2d").getImageData(0, 0, w, h).data;
+    var px = new Uint32Array(data.buffer), L = w, T = h, R = -1, B = -1;
+    for (var y = 0; y < h; y++) { var row = y * w;
+      for (var x = 0; x < w; x++) { if (px[row + x] >>> 24 || (px[row + x] & 0xff000000)) { if (x < L) L = x; if (x > R) R = x; if (y < T) T = y; if (y > B) B = y; } } }
+    if (R < 0) return null;
+    var out = document.createElement("canvas"); out.width = R - L + 1; out.height = B - T + 1;
+    out.getContext("2d").drawImage(src, L, T, out.width, out.height, 0, 0, out.width, out.height);
+    return { canvas: out, left: L, top: T };
+  }
+  function drawObjectFull(ctx, o, done) {   // draw at full opacity; the layer carries the opacity
+    var op = o.opacity; o.opacity = 1;
+    drawObject(ctx, o, function () { o.opacity = op; done(); });
+  }
+  function exportPSD() {
+    if (!image) return;
+    UI.toast({ type: "info", title: "Building layered PSD…", desc: "One layer per component.", duration: 2200 });
+    loadAgPsd(function (err) {
+      if (err) { UI.toast({ type: "danger", title: "PSD export failed", desc: err.message }); return; }
+      var W = image.w, H = image.h, work = document.createElement("canvas"); work.width = W; work.height = H;
+      var wctx = work.getContext("2d"), base = new Image();
+      base.onload = function () {
+        var layers = [], composite = document.createElement("canvas"); composite.width = W; composite.height = H;
+        var cctx = composite.getContext("2d");
+        var cbg = image.canvasBg && image.canvasBg !== "transparent" ? image.canvasBg : null;
+        if (cbg) {
+          var bgc = document.createElement("canvas"); bgc.width = W; bgc.height = H; var bx = bgc.getContext("2d"); bx.fillStyle = cbg; bx.fillRect(0, 0, W, H);
+          layers.push({ name: "Background", canvas: bgc, left: 0, top: 0 }); cctx.drawImage(bgc, 0, 0);
+        }
+        wctx.clearRect(0, 0, W, H);
+        wctx.drawImage(base, image.bx || 0, image.by || 0, image.bw || image.w, image.bh || image.h);
+        var imgL = cropLayer(work); if (imgL) layers.push({ name: image.filename || "Image", canvas: imgL.canvas, left: imgL.left, top: imgL.top });
+        cctx.drawImage(work, 0, 0);
+        var ordered = S.objects.slice().sort(function (a, b) { return (a.z || 0) - (b.z || 0); }), groups = {}, i = 0;
+        (function next() {
+          if (i >= ordered.length) return finish();
+          var o = ordered[i++];
+          wctx.clearRect(0, 0, W, H);
+          drawObjectFull(wctx, o, function () {
+            var cl = cropLayer(work);
+            var op = o.opacity == null ? 1 : o.opacity;
+            cctx.save(); cctx.globalAlpha = op; cctx.drawImage(work, 0, 0); cctx.restore();
+            if (cl) {
+              var layer = { name: layerName(o), canvas: cl.canvas, left: cl.left, top: cl.top, opacity: op };
+              if (o.groupId) {
+                if (!groups[o.groupId]) { groups[o.groupId] = { name: "Group " + (Object.keys(groups).length + 1), opened: true, children: [] }; layers.push(groups[o.groupId]); }
+                groups[o.groupId].children.push(layer);
+              } else layers.push(layer);
+            }
+            next();
+          });
+        })();
+        function finish() {
+          try {
+            var buf = window.agPsd.writePsd({ width: W, height: H, canvas: composite, children: layers }, { generateThumbnail: true });
+            var stem = (image.filename || "image").replace(/\.[^.]+$/, ""), psdName = stem + ".psd";
+            var deliver = function (blob, name) {
+              var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+              setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+              UI.toast({ type: "success", title: "Exported PSD", desc: name });
+            };
+            var psdBlob = new Blob([buf], { type: "image/vnd.adobe.photoshop" });
+            if (Store.isLocal && Store.isLocal()) deliver(psdBlob, psdName);              // plain web page: a .psd
+            else if (window.JSZip) {                                                      // claude.ai only allows .psd inside a .zip
+              var z = new JSZip(); z.file(psdName, buf);
+              z.generateAsync({ type: "blob", compression: "DEFLATE" }).then(function (zb) { deliver(zb, stem + "-layered-psd.zip"); });
+            } else UI.toast({ type: "danger", title: "PSD export failed", desc: "The zip library isn’t ready yet — try again in a moment." });
+          } catch (e) { console.error(e); UI.toast({ type: "danger", title: "PSD export failed", desc: (e && e.message) || "" }); }
+        }
+      };
+      base.onerror = function () { UI.toast({ type: "danger", title: "PSD export failed", desc: "Couldn’t read the image." }); };
+      base.src = image.src;
+    });
+  }
+
   function exportImage(format) {
     if (!image) return;
+    if (format === "psd") { exportPSD(); return; }
     var canvas = document.createElement("canvas");
     canvas.width = image.w; canvas.height = image.h;
     var ctx = canvas.getContext("2d");

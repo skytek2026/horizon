@@ -16,6 +16,10 @@ The logo device lives in `src/assets/img/logo-device.svg`. It is inlined in `src
 
 The sign-in background photo is `src/assets/img/login-earth.webp` (embedded by the build).
 
+## Layered PSD export
+
+The editor's **Download PSD (layered)** writes one pixel layer per component (plus the image and any canvas background) with [ag-psd](https://github.com/Agamnentzar/ag-psd) 31.0.3, loaded from jsDelivr the first time it's used. On claude.ai the `.psd` is delivered inside a `.zip` (the platform's download allowlist doesn't include `.psd`); elsewhere it downloads directly.
+
 ## Build
 
 ```
